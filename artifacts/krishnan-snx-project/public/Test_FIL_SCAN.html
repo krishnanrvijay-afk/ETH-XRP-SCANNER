@@ -716,8 +716,11 @@ async function processSym(sym) {
         st.openLong.bandUpper = recentHigh3;
         st.openLong.bandTicks = Math.round(recentWidth / st.tick);
       }
-    } else if ((!st.openLong || !st.openLong.fillConfirmed) && Math.abs(osc.lower - st.oscLower) >= st.tick) {
-      // Band drifted by ≥1 tick — track it for unfilled trades so re-arm entry stays current
+    } else if ((!st.openLong || !st.openLong.fillConfirmed) && osc.lower < st.oscLower && Math.abs(osc.lower - st.oscLower) >= st.tick) {
+      // Band drifted DOWNWARD by ≥1 tick — track it so entry follows the lower floor.
+      // Upward drift is intentionally ignored: a re-arm must never fill at or above
+      // the previous TP level. If the band shifts up, the re-arm holds its original
+      // entry and waits; grace will expire it if the level is never revisited.
       st.oscUpper = osc.upper;
       st.oscLower = osc.lower;
       if (st.openLong) {
@@ -727,12 +730,12 @@ async function processSym(sym) {
         st.openLong.bandLower = osc.lower;
         st.openLong.bandUpper = osc.upper;
         st.openLong.bandTicks = Math.round((osc.upper - osc.lower) / st.tick);
-        diagPush(p+'.21', 'BAND DRIFT', 'entry → ' + fmtPrice(osc.lower,st.tick) + ' – ' + fmtPrice(osc.upper,st.tick), 'warn');
+        diagPush(p+'.21', 'BAND DRIFT ↓', 'entry → ' + fmtPrice(osc.lower,st.tick) + ' – ' + fmtPrice(osc.upper,st.tick), 'warn');
       } else {
-        diagPush(p+'.21', 'BAND DRIFT', fmtPrice(osc.lower,st.tick) + ' – ' + fmtPrice(osc.upper,st.tick), 'warn');
+        diagPush(p+'.21', 'BAND DRIFT ↓', fmtPrice(osc.lower,st.tick) + ' – ' + fmtPrice(osc.upper,st.tick), 'warn');
       }
     } else {
-      diagPush(p+'.21', 'BAND TIGHTEN', 'no — ' + (st.openLong && st.openLong.fillConfirmed ? 'already filled' : 'not tight enough'), 'muted');
+      diagPush(p+'.21', 'BAND TIGHTEN', 'no — ' + (st.openLong && st.openLong.fillConfirmed ? 'already filled' : osc.lower > st.oscLower ? 'band shifted up — holding entry' : 'not tight enough'), 'muted');
     }
 
     if (st.openLong) {
