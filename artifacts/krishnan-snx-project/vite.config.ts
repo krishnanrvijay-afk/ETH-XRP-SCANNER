@@ -26,9 +26,57 @@ if (!basePath) {
   );
 }
 
+// Dev proxy: MEXC contract API (Binance is geo-restricted from Replit servers;
+// Railway uses Binance via server.js — prices are equivalent between exchanges).
+// Endpoints match the shape the dashboard expects (MEXC native format).
+const mexcProxyPlugin = {
+  name: "mexc-proxy",
+  configureServer(server: import("vite").ViteDevServer) {
+    server.middlewares.use(
+      "/proxy/mexc/kline",
+      async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
+        try {
+          const p      = new URLSearchParams((req.url || "").split("?")[1] || "");
+          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          const interval = p.get("interval") || "Min1";
+          const limit    = p.get("limit") || "25";
+          const url = `https://contract.mexc.com/api/v1/contract/kline/${symbol}?interval=${interval}&limit=${limit}`;
+          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          const data = await r.json();
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (e) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ success: false, message: String(e) }));
+        }
+      },
+    );
+
+    server.middlewares.use(
+      "/proxy/mexc/depth",
+      async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
+        try {
+          const p      = new URLSearchParams((req.url || "").split("?")[1] || "");
+          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          const limit  = p.get("limit") || "10";
+          const url = `https://contract.mexc.com/api/v1/contract/depth/${symbol}?limit=${limit}`;
+          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          const data = await r.json();
+          res.setHeader("Content-Type", "application/json");
+          res.end(JSON.stringify(data));
+        } catch (e) {
+          res.statusCode = 500;
+          res.end(JSON.stringify({ success: false, message: String(e) }));
+        }
+      },
+    );
+  },
+};
+
 export default defineConfig({
   base: basePath,
   plugins: [
+    mexcProxyPlugin,
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
@@ -65,28 +113,6 @@ export default defineConfig({
     allowedHosts: true,
     fs: {
       strict: true,
-    },
-    proxy: {
-      "/proxy/mexc/kline": {
-        target: "https://contract.mexc.com",
-        changeOrigin: true,
-        rewrite: (path) => {
-          const [, search] = path.split("?");
-          const p = new URLSearchParams(search || "");
-          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
-          return `/api/v1/contract/kline/${symbol}?interval=${p.get("interval") || "Min1"}&limit=${p.get("limit") || "25"}`;
-        },
-      },
-      "/proxy/mexc/depth": {
-        target: "https://contract.mexc.com",
-        changeOrigin: true,
-        rewrite: (path) => {
-          const [, search] = path.split("?");
-          const p = new URLSearchParams(search || "");
-          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
-          return `/api/v1/contract/depth/${symbol}?limit=${p.get("limit") || "10"}`;
-        },
-      },
     },
   },
   preview: {
