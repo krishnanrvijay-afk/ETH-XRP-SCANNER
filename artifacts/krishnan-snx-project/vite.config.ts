@@ -28,7 +28,16 @@ if (!basePath) {
 
 // Dev proxy: MEXC contract API (Binance is geo-restricted from Replit servers;
 // Railway uses Binance via server.js — prices are equivalent between exchanges).
-// Endpoints match the shape the dashboard expects (MEXC native format).
+// MEXC symbol map: some tokens use non-standard names on MEXC futures.
+const MEXC_SYMBOL: Record<string, string> = {
+  SNXUSDT:  "SNX_USDT",
+  FILUSDT:  "FILECOIN_USDT",   // MEXC lists FIL as FILECOIN_USDT
+  NEARUSDT: "NEAR_USDT",
+};
+function toMexcSymbol(raw: string): string {
+  return MEXC_SYMBOL[raw] ?? raw.replace(/USDT$/, "_USDT");
+}
+
 const mexcProxyPlugin = {
   name: "mexc-proxy",
   configureServer(server: import("vite").ViteDevServer) {
@@ -36,12 +45,14 @@ const mexcProxyPlugin = {
       "/proxy/mexc/kline",
       async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
         try {
-          const p      = new URLSearchParams((req.url || "").split("?")[1] || "");
-          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          const p        = new URLSearchParams((req.url || "").split("?")[1] || "");
+          const symbol   = toMexcSymbol(p.get("symbol") || "");
           const interval = p.get("interval") || "Min1";
           const limit    = p.get("limit") || "25";
-          const url = `https://contract.mexc.com/api/v1/contract/kline/${symbol}?interval=${interval}&limit=${limit}`;
-          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          const r = await fetch(
+            `https://contract.mexc.com/api/v1/contract/kline/${symbol}?interval=${interval}&limit=${limit}`,
+            { signal: AbortSignal.timeout(10000) },
+          );
           const data = await r.json();
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify(data));
@@ -57,10 +68,12 @@ const mexcProxyPlugin = {
       async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
         try {
           const p      = new URLSearchParams((req.url || "").split("?")[1] || "");
-          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          const symbol = toMexcSymbol(p.get("symbol") || "");
           const limit  = p.get("limit") || "10";
-          const url = `https://contract.mexc.com/api/v1/contract/depth/${symbol}?limit=${limit}`;
-          const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          const r = await fetch(
+            `https://contract.mexc.com/api/v1/contract/depth/${symbol}?limit=${limit}`,
+            { signal: AbortSignal.timeout(10000) },
+          );
           const data = await r.json();
           res.setHeader("Content-Type", "application/json");
           res.end(JSON.stringify(data));
