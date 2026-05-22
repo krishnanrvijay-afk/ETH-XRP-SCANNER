@@ -66,6 +66,28 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    proxy: {
+      "/proxy/mexc/kline": {
+        target: "https://contract.mexc.com",
+        changeOrigin: true,
+        rewrite: (path) => {
+          const [, search] = path.split("?");
+          const p = new URLSearchParams(search || "");
+          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          return `/api/v1/contract/kline/${symbol}?interval=${p.get("interval") || "Min1"}&limit=${p.get("limit") || "25"}`;
+        },
+      },
+      "/proxy/mexc/depth": {
+        target: "https://contract.mexc.com",
+        changeOrigin: true,
+        rewrite: (path) => {
+          const [, search] = path.split("?");
+          const p = new URLSearchParams(search || "");
+          const symbol = (p.get("symbol") || "").replace(/USDT$/, "_USDT");
+          return `/api/v1/contract/depth/${symbol}?limit=${p.get("limit") || "10"}`;
+        },
+      },
+    },
   },
   preview: {
     port,
