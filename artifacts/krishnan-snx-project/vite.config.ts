@@ -41,46 +41,57 @@ function toMexcSymbol(raw: string): string {
 const mexcProxyPlugin = {
   name: "mexc-proxy",
   configureServer(server: import("vite").ViteDevServer) {
+    // Use a single top-level middleware and check the full req.url ourselves.
+    // Path-prefixed .use('/path', fn) strips the prefix from req.url inside the
+    // handler, making query-string extraction unreliable across Vite versions.
     server.middlewares.use(
-      "/proxy/mexc/kline",
-      async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
-        try {
-          const p        = new URLSearchParams((req.url || "").split("?")[1] || "");
-          const symbol   = toMexcSymbol(p.get("symbol") || "");
-          const interval = p.get("interval") || "Min1";
-          const limit    = p.get("limit") || "25";
-          const r = await fetch(
-            `https://contract.mexc.com/api/v1/contract/kline/${symbol}?interval=${interval}&limit=${limit}`,
-            { signal: AbortSignal.timeout(10000) },
-          );
-          const data = await r.json();
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(data));
-        } catch (e) {
-          res.statusCode = 500;
-          res.end(JSON.stringify({ success: false, message: String(e) }));
-        }
-      },
-    );
+      async (
+        req: import("http").IncomingMessage,
+        res: import("http").ServerResponse,
+        next: () => void,
+      ) => {
+        const fullUrl = req.url || "";
 
-    server.middlewares.use(
-      "/proxy/mexc/depth",
-      async (req: import("http").IncomingMessage, res: import("http").ServerResponse) => {
-        try {
-          const p      = new URLSearchParams((req.url || "").split("?")[1] || "");
-          const symbol = toMexcSymbol(p.get("symbol") || "");
-          const limit  = p.get("limit") || "10";
-          const r = await fetch(
-            `https://contract.mexc.com/api/v1/contract/depth/${symbol}?limit=${limit}`,
-            { signal: AbortSignal.timeout(10000) },
-          );
-          const data = await r.json();
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(data));
-        } catch (e) {
-          res.statusCode = 500;
-          res.end(JSON.stringify({ success: false, message: String(e) }));
+        if (fullUrl.startsWith("/proxy/mexc/kline")) {
+          try {
+            const p        = new URLSearchParams(fullUrl.split("?")[1] || "");
+            const symbol   = toMexcSymbol(p.get("symbol") || "");
+            const interval = p.get("interval") || "Min1";
+            const limit    = p.get("limit") || "25";
+            const r = await fetch(
+              `https://contract.mexc.com/api/v1/contract/kline/${symbol}?interval=${interval}&limit=${limit}`,
+              { signal: AbortSignal.timeout(10000) },
+            );
+            const data = await r.json();
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(data));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, message: String(e) }));
+          }
+          return;
         }
+
+        if (fullUrl.startsWith("/proxy/mexc/depth")) {
+          try {
+            const p      = new URLSearchParams(fullUrl.split("?")[1] || "");
+            const symbol = toMexcSymbol(p.get("symbol") || "");
+            const limit  = p.get("limit") || "10";
+            const r = await fetch(
+              `https://contract.mexc.com/api/v1/contract/depth/${symbol}?limit=${limit}`,
+              { signal: AbortSignal.timeout(10000) },
+            );
+            const data = await r.json();
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify(data));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, message: String(e) }));
+          }
+          return;
+        }
+
+        next();
       },
     );
   },
