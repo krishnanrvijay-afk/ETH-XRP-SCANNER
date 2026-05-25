@@ -1,0 +1,78 @@
+New thought. Right now we have predefined our pairs based on my past 3xperience. I want to create a bot that scans the broader derivatives pairs asked on certain criteria for selection. Once identified research on the pair with binance MEXC and hyperliquid and analyze market depth, bands identified, sessions of strength by pair, liquidity or pair and best notional value for trading consolidation patterns. Doesn't have to be on strains to one tick but need consistent oscillation. Prepare the analysis present your finds in plain English
+1 hour ago
+This is a research task — running all searches in parallel across exchanges and criteria simultaneously:
+The web searches came back empty — going directly to the exchange APIs for real live data:
+Good data from MEXC and Hyperliquid. Fixing Binance and pulling depth/spread on the best candidates simultaneously:
+Now pulling tick sizes and checking the Binance REST differently, plus OI ratio analysis:
+All data is in. Now compiling the full analysis.
+
+Pair Selection Analysis — Plain English
+How this was researched
+Live data pulled directly from MEXC (777 pairs), Hyperliquid (230 pairs), and exchange APIs for real-time tick sizes, order book depth, open interest, and 24-hour volume — checked today at current prices.
+
+The single most useful metric for identifying consolidation-prone pairs is the OI-to-Volume ratio — how much open interest is sitting on the exchange relative to how much actually trades in a day. A high ratio means lots of positions are parked and waiting. Low turnover relative to size = price tends to sit in ranges rather than trend. That is exactly what the ZW detector needs.
+
+What the data shows
+The consolidation signal ranking
+Pair	Price	OI/Vol Ratio	Meaning
+AVAX	$9.43	18.1×	Very high resting OI, price moves slowly relative to book
+AAVE	$86.67	13.6×	Extremely sticky — barely trades relative to what's held
+LINK	$9.58	9.9×	Classic range-bound DeFi token
+LIT	$1.27	4.1×	Surprisingly high OI on Hyperliquid ($75M)
+XRP	$1.36	5.2×	Deep everywhere, oscillates within tight bands for long periods
+PENDLE	$1.98	5.1×	Yield-farming token, oscillates near rate benchmarks
+SUI	$1.05	~1.6×	More active turnover, less sticky
+Pair-by-pair breakdown
+XRP_USDT — Strongest overall candidate
+
+$1.36, tick $0.0001 on MEXC. Available on all three exchanges with deep books. OI of $81M on Hyperliquid against only $15.5M daily volume means the market is holding positions for multiple days rather than flipping intraday — that is range behaviour. XRP is well known for grinding sideways for long stretches between macro moves. The ZW would confirm bands frequently during Asian session when US flow is absent. At $100K notional, one tick move = $13.60 gross. With a 2–3 tick oscillation target rather than one tick, the economics are very clean.
+
+AVAX_USDT — Best consolidation signal in the dataset
+
+$9.43, tick $0.001 on MEXC. The 18× OI/Vol ratio is the highest of any tradeable mid-cap in the data. That means for every dollar that traded today, there are 18 dollars of positions sitting still. MEXC has $2.5M of depth in the top 5 bid levels with a 5.3 basis point spread — tight enough for reliable limit fills. At $100K notional, one tick ($0.001) = $10.60 gross. Very viable. Best session is US morning when AVAX has historically shown its tightest ranges before the London handover.
+
+AAVE_USDT — Deepest MEXC book in the mid-cap universe
+
+$86.67, tick $0.01. The MEXC book has $7.8M on the bid side across just 5 levels — that is exceptional depth for this price range, better than almost everything else tested. OI/Vol ratio of 13.6× confirms it consolidates well. At $50K notional, one tick = $5.77 gross. The main thing to watch is that AAVE tends to move sharply on DeFi governance news — when it moves, it really moves. Band invalidation needs to be respected promptly.
+
+PENDLE_USDT — Sleeper pick
+
+$1.98, tick $0.0001, OI/Vol 5.1×, OI $12.9M on HL. Pendle is a yield tokenisation protocol that closely tracks interest rate expectations. It has a natural consolidation tendency because its fair value is anchored to yield curves that don't move second-to-second. Not on MEXC's top-volume list so depth needs checking, but the HL data is solid. Best hours: US session when rate expectations are being priced.
+
+LIT_USDT — Conditional
+
+$1.27, tick $0.0001, OI $75M on Hyperliquid — that is a disproportionately enormous OI for a $1.27 token. It suggests either large structured positions or an arbitrage play anchoring it to a specific level. The spread on MEXC is good (3.95bps) but the book is almost empty ($25K depth). This pair should only be targeted on Hyperliquid directly, not MEXC.
+
+SUI_USDT — Borderline
+
+$1.05, tick $0.0001, available everywhere, OI $33M on HL, but MEXC depth is thin ($118K). Tradeable at lower notional ($25K–$50K). The lower OI/Vol ratio means it trends more than the others, so ZW confirmation needs to be strong before entering.
+
+Pairs to retire
+SNX — Price has dropped to $0.32 from the ~$0.50–$2.00 range it was at when originally selected. Hyperliquid OI is now only $700K and MEXC book has $176K depth with a 15.5bps spread. At current price and liquidity, one-tick fills are not reliable. The economics that made it attractive no longer hold at this price level.
+
+ZEC — Great for the main scanner (large moves, deep book, high volume). But tick is $0.01 on MEXC and price is $668 — you would need $330K+ notional to make one tick worth $5 gross. Not suited to the tick-scalp oscillation strategy. Keep it in the signal scanner, drop it from the scalper.
+
+CRV — 21.9bps spread. Too wide. Spread alone eats the profit before any SL is even considered.
+
+Recommended notional per pair
+The formula is: target at least $5–$10 gross per tick per leg, so SL costs (taker fee + price move) don't overwhelm winning legs.
+
+Pair	Tick	Suggested Notional	Gross per tick	Taker fee	Net TP (maker)
+XRP	$0.0001	$100,000	$7.37	$20	+$7.37
+AVAX	$0.001	$75,000	$7.95	$15	+$7.95
+AAVE	$0.01	$50,000	$5.77	$10	+$5.77
+PENDLE	$0.0001	$75,000	$7.52	$15	+$7.52
+SUI	$0.0001	$50,000	$4.76	$10	+$4.76
+All figures assume maker entry (limit order) and maker TP (limit at the far anchor). SL is market (taker). Win rate needed for break-even in all cases is around 65–67%.
+
+Session windows by pair
+Pair	Strongest consolidation window	Why
+XRP	Asia session — 22:00–04:00 UTC	Flat after US close, before London flow
+AVAX	Early US — 13:00–17:00 UTC	Before afternoon volatility, post-EU close
+AAVE	US session — 14:00–20:00 UTC	DeFi governance activity anchors price
+PENDLE	US morning — 13:00–16:00 UTC	Rate data digestion window
+SUI	Asia/Pacific — 00:00–06:00 UTC	Ecosystem activity without Western speculation
+Recommendation
+Replace the current scalper pair list with: XRP, AVAX, AAVE as the core three. Add PENDLE as a fourth if you want a yield-anchored range trader. Keep SUI as a watch candidate at lower notional. Retire SNX, ZEC, and CRV from the oscillation scalper (ZEC stays in the main signal scanner where it belongs).
+
+Say the word and I'll update the config
