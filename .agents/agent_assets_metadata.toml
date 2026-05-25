@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "DYj6VARtyNhZJSRVA8JMJ"
+uri = "file://oscillation_audit.zip"
+type = "unspecified"
+title = "oscillation_audit.html"
