@@ -1,0 +1,27 @@
+9 hours ago
+The screenshot shows "NO DATA – skip" on every pair — the fetches are being attempted but coming back empty. This means the HTML update reached Railway but the /api/kline/ route isn't available in THIS deployment. Let me check what server KRISHNAN-SNX-PROJECT actually runs:
+Found it — server.js is the actual Express server. It has /proxy/mexc/kline but it calls Binance not MEXC, and there's no depth route. My HTML change to /api/kline/ broke it further since that route doesn't exist in Express. Let me read the full server.js:
+Now I see the full picture clearly. Three problems:
+
+My HTML fix broke things — changed to /api/kline/ which doesn't exist in Express
+server.js fetches from Binance — likely blocked from Railway's IP, causing the original "NO DATA"
+No /proxy/mexc/depth route exists in server.js at all
+The correct fix: rewrite server.js to call MEXC directly (no Binance), add depth route, and fix the HTML URLs back to /proxy/mexc/ but passing the already-translated MEXC symbol. Fetching both files now:
+Now applying both fixes simultaneously — rewrite server.js to use MEXC directly, fix HTML URLs back to /proxy/mexc/:
+Both files ready. Pushing both to GitHub simultaneously:
+Both committed. Here is the complete summary of what was wrong and what is now fixed:
+
+Root cause chain (in full):
+
+The server behind krishnan-snx-project-production.up.railway.app is a Node/Express app (server.js) — not the Python scanner. It had two problems:
+
+Binance instead of MEXC — /proxy/mexc/kline was silently routing to Binance's futures API. Binance blocks Railway's server IPs in many regions, so every candle fetch returned nothing. This was the original cause of empty logs.
+No depth route at all — /proxy/mexc/depth did not exist, so every depth call returned a 404, and the catch block silently swallowed it.
+My earlier fix introduced a third problem — I changed the HTML fetch URLs to /api/kline/ which also doesn't exist in Express, breaking all pairs simultaneously. That's what you saw in the screenshot.
+
+What the two commits just fixed:
+
+File	Change
+server.js	/proxy/mexc/kline now calls MEXC directly. MEXC already returns the format the dashboard expects, so no conversion needed. /proxy/mexc/depth route added. /proxy/mexc/ticker switched to MEXC.
+multi_pair_scanner.html	Fetch URLs restored to /proxy/mexc/kline and /proxy/mexc/depth. Symbol is translated before the call — FIL sends FILECOIN_USDT, XRP sends XRP_USDT, etc. — so the server receives the correct MEXC contract name directly.
+Railway will pick up the push and redeploy in about 2 minutes. Once it's live, do a hard refresh (Cmd+Shift+R) on the dashboard and all four pairs should start polling and building candle history
