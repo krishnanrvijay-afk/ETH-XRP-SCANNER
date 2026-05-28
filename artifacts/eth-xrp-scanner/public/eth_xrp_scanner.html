@@ -132,8 +132,14 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
 .stat-pill {
   background: var(--card); border: 1px solid var(--border); border-radius: 8px;
   padding: 8px 10px; text-align: center;
+  display: flex; flex-direction: column; align-items: center;
 }
-.stat-label { font-size: 10px; color: var(--white); font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; }
+.stat-label {
+  font-size: 10px; color: var(--white); font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; min-height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1.3;
+}
 .stat-val   { font-size: 28px; font-weight: 700; font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 .stat-val.green { color: var(--green); }
 .stat-val.red   { color: var(--red);   }
