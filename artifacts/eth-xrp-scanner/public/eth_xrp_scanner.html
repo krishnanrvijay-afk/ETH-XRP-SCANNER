@@ -459,7 +459,7 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
     <div class="venue-badge mexc">MEXC $625K/$500K · 25×/20×</div>
     <div class="venue-badge hl">HL $625K/$500K · 0.39% TP</div>
     <div class="badge-paper">PAPER</div>
-    <div id="clock">--:--:-- UTC</div>
+    <div id="clock">--:--:-- EDT</div>
   </div>
 </div>
 
@@ -480,7 +480,7 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
 
   <!-- SESSION BAR -->
   <div class="session-panel">
-    <div class="session-panel-title">TRADING WINDOWS (UTC) · <span id="utcClock" style="color:var(--cyan)">--:--</span></div>
+    <div class="session-panel-title">TRADING WINDOWS (EDT) · <span id="utcClock" style="color:var(--cyan)">--:--</span></div>
     <div class="session-row">
       <div class="session-pair-label" style="color:var(--cyan)">ETH</div>
       <div class="session-bar" id="sessionBarETH"></div>
@@ -530,14 +530,14 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
     <div class="pair-section-header">
       <div class="pair-section-title" style="color:var(--cyan)">ETH</div>
       <div class="pair-section-meta">$625,000 notional · 25× leverage · $25,000 margin each</div>
-      <div class="pair-section-window" id="eth-window-status">UTC 04:00–12:00</div>
+      <div class="pair-section-window" id="eth-window-status">EDT 00:00–08:00</div>
     </div>
     <div class="pair-row">
       <div class="card-wrapper">
         <div class="card-blackout-overlay hidden" id="blackout_ETH_MEXC">
           <div class="bo-icon">⛔</div>
           <div class="bo-title">SESSION BLACKOUT</div>
-          <div class="bo-window">ETH WINDOW · UTC 04:00 – 12:00</div>
+          <div class="bo-window">ETH WINDOW · EDT 00:00–08:00</div>
           <div class="bo-countdown" id="bo_cd_ETH_MEXC">Opens in --</div>
           <div class="bo-note">No new positions · detection paused</div>
         </div>
@@ -570,7 +570,7 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
         <div class="card-blackout-overlay hidden" id="blackout_ETH_HL">
           <div class="bo-icon">⛔</div>
           <div class="bo-title">SESSION BLACKOUT</div>
-          <div class="bo-window">ETH WINDOW · UTC 04:00 – 12:00</div>
+          <div class="bo-window">ETH WINDOW · EDT 00:00–08:00</div>
           <div class="bo-countdown" id="bo_cd_ETH_HL">Opens in --</div>
           <div class="bo-note">No new positions · detection paused</div>
         </div>
@@ -586,14 +586,14 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
     <div class="pair-section-header">
       <div class="pair-section-title" style="color:var(--purple)">XRP</div>
       <div class="pair-section-meta">$500,000 notional · 20× leverage · $25,000 margin each</div>
-      <div class="pair-section-window" id="xrp-window-status">UTC 02:00–05:00 · 10:00–13:00</div>
+      <div class="pair-section-window" id="xrp-window-status">EDT 22:00–01:00 · 06:00–09:00</div>
     </div>
     <div class="pair-row">
       <div class="card-wrapper">
         <div class="card-blackout-overlay hidden" id="blackout_XRP_MEXC">
           <div class="bo-icon">⛔</div>
           <div class="bo-title">SESSION BLACKOUT</div>
-          <div class="bo-window">XRP WINDOWS · UTC 02–05 · 10–13</div>
+          <div class="bo-window">XRP WINDOWS · EDT 22–01 · 06–09</div>
           <div class="bo-countdown" id="bo_cd_XRP_MEXC">Opens in --</div>
           <div class="bo-note">No new positions · detection paused</div>
         </div>
@@ -626,7 +626,7 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
         <div class="card-blackout-overlay hidden" id="blackout_XRP_HL">
           <div class="bo-icon">⛔</div>
           <div class="bo-title">SESSION BLACKOUT</div>
-          <div class="bo-window">XRP WINDOWS · UTC 02–05 · 10–13</div>
+          <div class="bo-window">XRP WINDOWS · EDT 22–01 · 06–09</div>
           <div class="bo-countdown" id="bo_cd_XRP_HL">Opens in --</div>
           <div class="bo-note">No new positions · detection paused</div>
         </div>
@@ -697,8 +697,8 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:25, notional:625000, contractSize:0.001,
     tick:0.1,
     makerFee:0, takerFee:0.0002,
-    bestHoursUTC:[4,5,6,7,8,9,10,11],
-    windowDesc:'UTC 04:00–12:00',
+    bestHoursEDT:[0,1,2,3,4,5,6,7],
+    windowDesc:'EDT 00:00–08:00',
     mexcSym:'ETH_USDT', isHL:false,
   },
   ETH_HL: {
@@ -708,8 +708,8 @@ const TOKEN_CONFIG = {
     tick:0.1,
     makerFee:0.00015, takerFee:0.00045,
     tpPct:0.0039, softStopPct:0.0039, hardSlPct:0.0078,
-    bestHoursUTC:[4,5,6,7,8,9,10,11],
-    windowDesc:'UTC 04:00–12:00',
+    bestHoursEDT:[0,1,2,3,4,5,6,7],
+    windowDesc:'EDT 00:00–08:00',
     hlCoin:'ETH', isHL:true,
   },
   XRP_MEXC: {
@@ -718,10 +718,9 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:20, notional:500000, contractSize:1,
     tick:0.0001,
     makerFee:0, takerFee:0.0002,
-    bestHoursUTC:[2,3,4,10,11,12],
-    windowDesc:'UTC 02–05 · 10–13',
+    bestHoursEDT:[22,23,0,6,7,8],
+    windowDesc:'EDT 22–01 · 06–09',
     mexcSym:'XRP_USDT', isHL:false,
-    longOnly:true,
   },
   XRP_HL: {
     label:'XRP·HL', pairLabel:'XRP', sym:'XRP', venue:'HL',
@@ -730,10 +729,9 @@ const TOKEN_CONFIG = {
     tick:0.0001,
     makerFee:0.00015, takerFee:0.00045,
     tpPct:0.0039, softStopPct:0.0039, hardSlPct:0.0078,
-    bestHoursUTC:[2,3,4,10,11,12],
-    windowDesc:'UTC 02–05 · 10–13',
+    bestHoursEDT:[22,23,0,6,7,8],
+    windowDesc:'EDT 22–01 · 06–09',
     hlCoin:'XRP', isHL:true,
-    longOnly:true,
   },
 };
 const SYMBOLS = ['ETH_MEXC','ETH_HL','XRP_MEXC','XRP_HL'];
@@ -846,13 +844,17 @@ const state = {};
 SYMBOLS.forEach(s => { state[s] = makeState(s); });
 
 // ── TIME / SESSION ─────────────────────────────────────────────────────────────
-function utcHour()   { return new Date().getUTCHours(); }
-function utcMinute() { return new Date().getUTCMinutes(); }
+function edtHour() {
+  return parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hour12:false}).format(new Date()),10);
+}
+function edtMinute() {
+  return parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',minute:'numeric'}).format(new Date()),10);
+}
+function edtSecond() {
+  return parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',second:'numeric'}).format(new Date()),10);
+}
 function fmtTime(ms) {
-  const d = new Date(ms);
-  return String(d.getUTCHours()).padStart(2,'0')+':'+
-         String(d.getUTCMinutes()).padStart(2,'0')+':'+
-         String(d.getUTCSeconds()).padStart(2,'0');
+  return new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(ms));
 }
 function fmtPrice(p, tick) {
   if (!p && p !== 0) return '--';
@@ -888,8 +890,8 @@ function inferTick(candles) {
 
 // ── SESSION BLACKOUT ───────────────────────────────────────────────────────────
 function isOptimalWindow(sym) {
-  const h = utcHour();
-  return TOKEN_CONFIG[sym].bestHoursUTC.includes(h);
+  const h = edtHour();
+  return TOKEN_CONFIG[sym].bestHoursEDT.includes(h);
 }
 function inBlackout(sym) { return !isOptimalWindow(sym); }
 
@@ -1394,13 +1396,13 @@ async function processSym(sym) {
 
 // ── RENDER SESSION BARS ────────────────────────────────────────────────────────
 function renderSession() {
-  const h = utcHour();
-  const m = utcMinute();
-  document.getElementById('utcClock').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' UTC';
+  const h = edtHour();
+  const m = edtMinute();
+  document.getElementById('utcClock').textContent = String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+' EDT';
 
-  // ETH bar: 24 segments, hours 0-23
-  const ethHours = new Set([4,5,6,7,8,9,10,11]);
-  const xrpHours = new Set([2,3,4,10,11,12]);
+  // ETH bar: 24 segments, hours 0-23 EDT
+  const ethHours = new Set([0,1,2,3,4,5,6,7]);
+  const xrpHours = new Set([22,23,0,6,7,8]);
 
   function makeBar(hours, activeClass, curH) {
     return Array.from({length:24},(_,i) => {
@@ -1408,7 +1410,7 @@ function renderSession() {
       const isCur = i === curH;
       const cls   = inW ? activeClass : 'inactive';
       const label = (i % 3 === 0) ? String(i).padStart(2,'0') : (inW ? '·' : '');
-      return '<div class="session-seg '+cls+'" style="flex:1;'+(isCur?'outline:1px solid #fff;':'')+'" title="UTC '+String(i).padStart(2,'0')+':00">'+label+'</div>';
+      return '<div class="session-seg '+cls+'" style="flex:1;'+(isCur?'outline:1px solid #fff;':'')+'" title="EDT '+String(i).padStart(2,'0')+':00">'+label+'</div>';
     }).join('');
   }
 
@@ -1430,9 +1432,9 @@ function renderSession() {
 
 // ── RENDER CLOCK ───────────────────────────────────────────────────────────────
 function renderClock() {
-  const h = utcHour(), m = utcMinute(), s = new Date().getUTCSeconds();
+  const h = edtHour(), m = edtMinute(), s = edtSecond();
   document.getElementById('clock').textContent =
-    String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' UTC';
+    String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')+' EDT';
 
   // Update blackout overlays and countdown
   SYMBOLS.forEach(sym => {
@@ -1457,8 +1459,8 @@ function renderClock() {
 
 function nextWindowText(sym) {
   const cfg = TOKEN_CONFIG[sym];
-  const h   = utcHour();
-  const m   = utcMinute();
+  const h   = edtHour();
+  const m   = edtMinute();
   const curMin = h * 60 + m;
 
   // Find the next window-start hour
@@ -1466,14 +1468,14 @@ function nextWindowText(sym) {
   // Search forward within 24 hours
   for (let delta = 1; delta <= 24; delta++) {
     const candidate = (h + delta) % 24;
-    if (cfg.bestHoursUTC.includes(candidate)) { nextH = candidate; break; }
+    if (cfg.bestHoursEDT.includes(candidate)) { nextH = candidate; break; }
   }
   if (nextH === null) return 'unknown';
   const nextMin  = nextH * 60;
   const diffMin  = nextMin > curMin ? nextMin - curMin : (24*60 + nextMin) - curMin;
   const diffH    = Math.floor(diffMin / 60);
   const diffM    = diffMin % 60;
-  return 'Opens in ' + (diffH > 0 ? diffH + 'h ' : '') + diffM + 'm (UTC '+String(nextH).padStart(2,'0')+':00)';
+  return 'Opens in ' + (diffH > 0 ? diffH + 'h ' : '') + diffM + 'm (EDT '+String(nextH).padStart(2,'0')+':00)';
 }
 
 // ── RENDER COMBINED STATS ──────────────────────────────────────────────────────

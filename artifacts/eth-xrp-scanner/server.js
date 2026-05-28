@@ -7,18 +7,27 @@ const app      = express();
 const PORT     = process.env.PORT      || 3000;
 const BASE     = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. "/eth-xrp-scanner"
 
-// ── SESSION WINDOWS (UTC hours) ────────────────────────────────────────────────
-// Matches TOKEN_CONFIG.bestHoursUTC in the client
+// ── SESSION WINDOWS (EDT hours) ────────────────────────────────────────────────
+// Matches TOKEN_CONFIG.bestHoursEDT in the client (EDT = UTC-4).
+// ETH: UTC 04:00-12:00 → EDT 00:00-08:00
+// XRP: UTC 02:00-05:00 → EDT 22:00-01:00 · UTC 10:00-13:00 → EDT 06:00-09:00
 const SESSION_WINDOWS = {
-  ETH: new Set([4,5,6,7,8,9,10,11]),
-  XRP: new Set([2,3,4,10,11,12]),
+  ETH: new Set([0,1,2,3,4,5,6,7]),
+  XRP: new Set([22,23,0,6,7,8]),
 };
 
-function utcHourNow() { return new Date().getUTCHours(); }
+function edtHourNow() {
+  return parseInt(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour: 'numeric', hour12: false
+    }).format(new Date()), 10
+  );
+}
 
 function isBlackedOut(pair) {
   const w = SESSION_WINDOWS[pair];
-  return w ? !w.has(utcHourNow()) : false;
+  return w ? !w.has(edtHourNow()) : false;
 }
 
 function pairFromMexcSymbol(sym) {
