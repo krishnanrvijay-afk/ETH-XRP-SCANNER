@@ -7,8 +7,42 @@ const app      = express();
 const PORT     = process.env.PORT      || 3000;
 const BASE     = (process.env.BASE_PATH || '').replace(/\/$/, ''); // e.g. "/eth-xrp-scanner"
 
+// ── SESSION WINDOWS (UTC hours) ────────────────────────────────────────────────
+// Matches TOKEN_CONFIG.bestHoursUTC in the client
+const SESSION_WINDOWS = {
+  ETH: new Set([4,5,6,7,8,9,10,11]),
+  XRP: new Set([2,3,4,10,11,12]),
+};
+
+function utcHourNow() { return new Date().getUTCHours(); }
+
+function isBlackedOut(pair) {
+  const w = SESSION_WINDOWS[pair];
+  return w ? !w.has(utcHourNow()) : false;
+}
+
+function pairFromMexcSymbol(sym) {
+  if (!sym) return null;
+  if (sym.toUpperCase().includes('XRP')) return 'XRP';
+  if (sym.toUpperCase().includes('ETH')) return 'ETH';
+  return null;
+}
+
+function pairFromCoin(coin) {
+  if (!coin) return null;
+  const c = coin.toUpperCase();
+  if (c === 'XRP') return 'XRP';
+  if (c === 'ETH') return 'ETH';
+  return null;
+}
+
 // ── MEXC PROXY ─────────────────────────────────────────────────────────────────
 app.get(['/proxy/mexc/kline', BASE + '/proxy/mexc/kline'], async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const pair = pairFromMexcSymbol(req.query.symbol);
+  if (pair && isBlackedOut(pair)) {
+    return res.json({ blackout: true, pair, message: 'Outside session window — server blackout enforced' });
+  }
   try {
     const symbol   = req.query.symbol   || '';
     const interval = req.query.interval || 'Min1';
@@ -18,7 +52,6 @@ app.get(['/proxy/mexc/kline', BASE + '/proxy/mexc/kline'], async (req, res) => {
       { signal: AbortSignal.timeout(10000) }
     );
     const data = await r.json();
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(data);
   } catch (e) {
     res.status(500).json({ success: false, message: String(e) });
@@ -26,6 +59,11 @@ app.get(['/proxy/mexc/kline', BASE + '/proxy/mexc/kline'], async (req, res) => {
 });
 
 app.get(['/proxy/mexc/depth', BASE + '/proxy/mexc/depth'], async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const pair = pairFromMexcSymbol(req.query.symbol);
+  if (pair && isBlackedOut(pair)) {
+    return res.json({ blackout: true, pair, message: 'Outside session window — server blackout enforced' });
+  }
   try {
     const symbol = req.query.symbol || '';
     const limit  = req.query.limit  || '10';
@@ -34,7 +72,6 @@ app.get(['/proxy/mexc/depth', BASE + '/proxy/mexc/depth'], async (req, res) => {
       { signal: AbortSignal.timeout(10000) }
     );
     const data = await r.json();
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(data);
   } catch (e) {
     res.status(500).json({ success: false, message: String(e) });
@@ -43,6 +80,11 @@ app.get(['/proxy/mexc/depth', BASE + '/proxy/mexc/depth'], async (req, res) => {
 
 // ── HYPERLIQUID PROXY ──────────────────────────────────────────────────────────
 app.get(['/proxy/hl/candles', BASE + '/proxy/hl/candles'], async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const pair = pairFromCoin(req.query.coin);
+  if (pair && isBlackedOut(pair)) {
+    return res.json({ blackout: true, pair, message: 'Outside session window — server blackout enforced' });
+  }
   try {
     const coin      = req.query.coin      || 'ETH';
     const startTime = parseInt(req.query.startTime) || (Date.now() - 1800000);
@@ -54,7 +96,6 @@ app.get(['/proxy/hl/candles', BASE + '/proxy/hl/candles'], async (req, res) => {
       signal:  AbortSignal.timeout(10000),
     });
     const data = await r.json();
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(data);
   } catch (e) {
     res.status(500).json([]);
@@ -62,6 +103,11 @@ app.get(['/proxy/hl/candles', BASE + '/proxy/hl/candles'], async (req, res) => {
 });
 
 app.get(['/proxy/hl/depth', BASE + '/proxy/hl/depth'], async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const pair = pairFromCoin(req.query.coin);
+  if (pair && isBlackedOut(pair)) {
+    return res.json({ blackout: true, pair, message: 'Outside session window — server blackout enforced' });
+  }
   try {
     const coin = req.query.coin || 'ETH';
     const r = await fetch('https://api.hyperliquid.xyz/info', {
@@ -71,7 +117,6 @@ app.get(['/proxy/hl/depth', BASE + '/proxy/hl/depth'], async (req, res) => {
       signal:  AbortSignal.timeout(10000),
     });
     const data = await r.json();
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(data);
   } catch (e) {
     res.status(500).json({ levels: [] });

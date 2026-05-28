@@ -721,6 +721,7 @@ const TOKEN_CONFIG = {
     bestHoursUTC:[2,3,4,10,11,12],
     windowDesc:'UTC 02–05 · 10–13',
     mexcSym:'XRP_USDT', isHL:false,
+    longOnly:true,
   },
   XRP_HL: {
     label:'XRP·HL', pairLabel:'XRP', sym:'XRP', venue:'HL',
@@ -732,6 +733,7 @@ const TOKEN_CONFIG = {
     bestHoursUTC:[2,3,4,10,11,12],
     windowDesc:'UTC 02–05 · 10–13',
     hlCoin:'XRP', isHL:true,
+    longOnly:true,
   },
 };
 const SYMBOLS = ['ETH_MEXC','ETH_HL','XRP_MEXC','XRP_HL'];
@@ -1150,6 +1152,12 @@ async function processSym(sym) {
   const st  = state[sym];
   const cfg = TOKEN_CONFIG[sym];
 
+  // Skip polling during blackout unless a band is held or a trade is live
+  if (inBlackout(sym) && !st.zwHeldTs && !st.inOsc) {
+    dp(sym, p+'.1', 'BLACKOUT SKIP', 'no poll — outside session window ['+cfg.windowDesc+']', 'muted');
+    return;
+  }
+
   const limit = st.candles.length >= 25 ? 4 : 25;
   dp(sym, p+'.1', 'POLL START', 'fetching '+limit+' candles ['+cfg.venue+']', 'muted');
 
@@ -1281,9 +1289,17 @@ async function processSym(sym) {
       st.unrPnl = 0;
       dp(sym, p+'.14', 'LONG TP', fmtPrice(last.close,st.tick)+' ≥ TP='+fmtPrice(lng.target,st.tick), 'ok');
       closeTrade(sym, lng, tpExit, 'TP');
-      st.cycleTradeCount++; st.activeDir = 'SHORT'; st.action = 'SHORT_ARMED';
+      st.cycleTradeCount++;
       st.tpCounter = Math.min((st.tpCounter||0)+1, 3);
-      if (!inBlackout(sym)) openShort(sym, last);
+      if (cfg.longOnly) {
+        // XRP: LONG-only — take profit, reset, wait for next confirmed band
+        dp(sym, p+'.15', 'LONG-ONLY', 'TP banked · resetting for next band', 'ok');
+        resetBand(sym, 'long-only: TP banked — waiting for new zone');
+      } else {
+        // ETH: oscillate to SHORT leg
+        st.activeDir = 'SHORT'; st.action = 'SHORT_ARMED';
+        if (!inBlackout(sym)) openShort(sym, last);
+      }
       return;
     }
 
@@ -1641,12 +1657,19 @@ function renderTicker(sym) {
         '<div><div class="bp-order-label">HardSL</div><div class="bp-order-value red">'+fmtPrice(trade.sl,st.tick)+'</div></div>' +
       '</div></div>';
   }
+  const longOnlyPanel = '<div class="bp-dual-side" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #1a2030;gap:4px">'+
+    '<div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#2a3a4a">SHORT</div>'+
+    '<div style="font-size:8px;font-weight:700;letter-spacing:1px;color:#00e676;padding:2px 8px;border:1px solid #00e67630;border-radius:3px;background:#00e67608">LONG ONLY</div>'+
+    '<div style="font-size:8px;color:#2a3a4a;margin-top:2px">one leg per band</div>'+
+    '</div>';
   const dualOrderHtml = st.inOsc
-    ? '<div class="bp-dual">'+orderCell(lng,'LONG')+orderCell(sht,'SHORT')+'</div>'
-    : '<div class="bp-dual">'+orderCell(null,'LONG')+orderCell(null,'SHORT')+'</div>';
+    ? '<div class="bp-dual">'+orderCell(lng,'LONG')+(cfg.longOnly ? longOnlyPanel : orderCell(sht,'SHORT'))+'</div>'
+    : '<div class="bp-dual">'+orderCell(null,'LONG')+(cfg.longOnly ? longOnlyPanel : orderCell(null,'SHORT'))+'</div>';
 
   // Meta line
-  const slDesc = isHL ? '±0.39% TP · ±0.78% SL' : '1tk TP · 2tk SL';
+  const slDesc = cfg.longOnly
+    ? (isHL ? '±0.39% TP · LONG ONLY' : '1tk TP · LONG ONLY')
+    : (isHL ? '±0.39% TP · ±0.78% SL' : '1tk TP · 2tk SL');
   const metaHtml = '<div class="bp-meta"><span>$'+fmtK(cfg.notional).replace('$','')+' · '+cfg.leverage+'× · '+slDesc+'</span>' +
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
 
