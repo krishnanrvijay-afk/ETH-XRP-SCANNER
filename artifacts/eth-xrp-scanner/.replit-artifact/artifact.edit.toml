@@ -1,0 +1,18 @@
+kind = "web"
+previewPath = "/eth-xrp-scanner/eth_xrp_scanner.html"
+title = "ETH-XRP-SCANNER"
+version = "1.0.0"
+id = "artifacts/eth-xrp-scanner"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/eth-xrp-scanner" ]
+localPort = 21778
+
+[services.development]
+run = "pnpm --filter @workspace/eth-xrp-scanner run dev"
+
+[services.env]
+PORT = "21778"
+BASE_PATH = "/eth-xrp-scanner"

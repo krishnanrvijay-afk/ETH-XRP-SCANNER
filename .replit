@@ -11,6 +11,27 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "artifacts/eth-xrp-scanner: ETH-XRP Scanner"
+
+[[workflows.workflow]]
+name = "artifacts/eth-xrp-scanner: ETH-XRP Scanner"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3000 pnpm --filter @workspace/eth-xrp-scanner run dev"
+waitForPort = 3000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -19,6 +40,10 @@ integrations = ["github:1.0.0"]
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
 
 [[ports]]
 localPort = 8080
