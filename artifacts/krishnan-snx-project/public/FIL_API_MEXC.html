@@ -831,12 +831,8 @@ async function processSym(sym) {
   const p  = pollCount;
   const st = state[sym];
 
-  // Per-symbol blackout skip
-  if (inBlackoutSym(sym) && !st.zwHeldTs && !st.openLong) {
-    dp(sym, p+'.1', 'BLACKOUT SKIP', 'outside best hours ['+TOKEN_CONFIG[sym].bestHours.map(h=>String(h).padStart(2,'0')+':00').join(' ')+' EDT]', 'muted');
-    return;
-  }
-
+  // Always fetch candles first so the card renders with a live price and day range,
+  // even during off-hours. The blackout check below only gates detection/trading.
   const limit = st.candles.length >= 25 ? 4 : 25;
   dp(sym, p+'.1', 'POLL START', 'fetching '+limit+' candles', 'muted');
 
@@ -851,6 +847,13 @@ async function processSym(sym) {
   const dayHigh = Math.max(...raw.map(c=>c.high));
   const dayLow  = Math.min(...raw.map(c=>c.low));
   st.dayRange   = (dayHigh-dayLow)/dayLow*100;
+
+  // Per-symbol blackout skip — only gates detection/trading, not price display
+  if (inBlackoutSym(sym) && !st.zwHeldTs && !st.openLong) {
+    dp(sym, p+'.1', 'BLACKOUT SKIP', 'outside best hours ['+TOKEN_CONFIG[sym].bestHours.map(h=>String(h).padStart(2,'0')+':00').join(' ')+' EDT]', 'muted');
+    renderTicker(sym);
+    return;
+  }
 
   dp(sym, p+'.2', 'CANDLES', raw.length+' in window · fetched '+fresh.length, 'ok');
   dp(sym, p+'.3', 'LAST CLOSE', fmtPrice(last.close,st.tick), 'info');
