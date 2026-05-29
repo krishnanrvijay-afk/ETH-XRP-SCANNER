@@ -33,18 +33,32 @@
 
   .hdr { display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
   .hdr-left { display: flex; align-items: center; gap: 10px; }
-  .hdr-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px; color: var(--white); }
+  .hdr-title { font-family: 'Bebas Neue', sans-serif; font-size: 22px; letter-spacing: 2px; color: #ffffff; }
   .hdr-title span { color: var(--blue); }
   .clear-btn { background: rgba(255,61,61,0.12); border: 1px solid rgba(255,61,61,0.3); color: var(--red); padding: 4px 10px; border-radius: 4px; font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; cursor: pointer; }
   .hdr-right { text-align: right; }
-  .hdr-clock { font-size: 12px; font-weight: 700; color: var(--yellow); }
-  .hdr-session { font-size: 10px; color: var(--muted); margin-top: 1px; }
+  .hdr-clock { font-size: 24px; font-weight: 700; color: var(--yellow); }
+  .hdr-session { font-size: 10px; color: #ffffff; margin-top: 1px; }
   .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 4px; animation: pulse 1.8s ease-in-out infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
 
-  .session-bar { display: flex; gap: 3px; margin-bottom: 10px; }
-  .session-seg { flex: 1; height: 26px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1.5px; text-transform: uppercase; }
-  .session-seg.active { outline: 2px solid var(--yellow); }
+  /* ── SESSION BAR ── */
+  .session-bar { display: flex; gap: 3px; margin-bottom: 6px; }
+  .session-seg { flex: 1; height: 30px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; }
+  .session-seg.prime { outline: 2px solid var(--green); }
+  .session-seg.risk  { outline: 2px solid var(--red); }
+  .session-seg.now   { outline: 2px solid var(--yellow); }
+
+  /* ── FIL PRIME STATUS STRIP ── */
+  .fil-session-strip { display: flex; align-items: center; justify-content: space-between; border-radius: 5px; padding: 8px 12px; margin-bottom: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1.5px; border: 1px solid transparent; transition: all 0.4s; }
+  .fil-session-strip.prime-active  { background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.35); color: var(--green); }
+  .fil-session-strip.prime-waiting { background: rgba(255,215,64,0.06); border-color: rgba(255,215,64,0.25); color: var(--yellow); }
+  .fil-session-strip.risk-zone     { background: rgba(255,61,61,0.08); border-color: rgba(255,61,61,0.30); color: var(--red); }
+  .fil-session-strip.off-hours     { background: rgba(74,98,114,0.08); border-color: rgba(74,98,114,0.20); color: var(--muted); }
+  .fil-strip-left  { display: flex; align-items: center; gap: 8px; }
+  .fil-strip-dot   { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .fil-strip-dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
+  .fil-strip-right { font-size: 11px; opacity: 0.7; }
 
   .blackout { background: rgba(255,61,61,0.08); border: 1px solid rgba(255,61,61,0.25); border-radius: 5px; padding: 7px 12px; margin-bottom: 10px; color: var(--red); font-size: 11px; font-weight: 700; text-align: center; display: none; }
 
@@ -53,7 +67,7 @@
   .api-panel-title { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; color: var(--blue); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
   .api-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
   .api-row:last-child { border-bottom: none; }
-  .api-row-label { color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .api-row-label { color: #ffffff; letter-spacing: 1px; text-transform: uppercase; }
   .api-row-val { font-family: 'JetBrains Mono', monospace; font-size: 10px; max-width: 55%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conn-ok    { color: var(--green); }
   .conn-err   { color: var(--red); }
@@ -76,8 +90,8 @@
   /* ── COMBINED BAR ── */
   .combined { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; margin-bottom: 12px; }
   .cpill { background: var(--card); border: 1px solid var(--border); border-radius: 5px; padding: 10px 8px; text-align: center; }
-  .cpill-label { font-size: 9px; color: #fff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; font-weight: 700; }
-  .cpill-value { font-family: 'Bebas Neue', sans-serif; font-size: 24px; letter-spacing: 1px; }
+  .cpill-label { font-size: 9px; color: #ffffff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 3px; font-weight: 700; }
+  .cpill-value { font-family: 'Bebas Neue', sans-serif; font-size: 48px; letter-spacing: 1px; }
 
   /* ── TICKER CARD ── */
   .ticker-card { background: #000; border: 2px solid #222; border-radius: 10px; margin-bottom: 12px; overflow: hidden; transition: border-color 0.3s; }
@@ -87,7 +101,7 @@
   .ticker-card.border-new    { border-color: #00c8ff; }
 
   .bp-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px 10px; border-bottom: 1px dashed #222; }
-  .bp-token { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 3px; color: #fff; line-height: 1; }
+  .bp-token { font-family: 'Bebas Neue', sans-serif; font-size: 72px; letter-spacing: 3px; color: #fff; line-height: 1; }
   .bp-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
   .badge { font-family: 'Bebas Neue', sans-serif; font-size: 13px; padding: 3px 10px; border-radius: 3px; letter-spacing: 1.5px; }
   .badge-green  { background: #00e676; color: #000; }
@@ -99,21 +113,21 @@
   .bp-grid { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px dashed #222; }
   .bp-cell { padding: 10px 14px; border-right: 1px dashed #222; }
   .bp-cell:nth-child(even) { border-right: none; }
-  .bp-cell-label { font-size: 14px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
-  .bp-cell-value { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; line-height: 1; color: #fff; }
+  .bp-cell-label { font-size: 14px; font-weight: 700; color: #ffffff; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
+  .bp-cell-value { font-family: 'Bebas Neue', sans-serif; font-size: 56px; letter-spacing: 1px; line-height: 1; color: #fff; }
   .bp-cell-value.green  { color: #00e676; }
   .bp-cell-value.yellow { color: #ffd740; }
   .bp-cell-value.red    { color: #ff3d3d; }
   .bp-cell-value.blue   { color: #00c8ff; }
 
   .bp-action { padding: 10px 14px; border-bottom: 1px dashed #222; display: flex; justify-content: space-between; align-items: center; }
-  .bp-action-label { font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 2px; }
-  .bp-action-detail { text-align: right; font-family: 'Bebas Neue', sans-serif; font-size: 18px; letter-spacing: 1px; line-height: 1.4; }
+  .bp-action-label { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 2px; color: #ffffff; }
+  .bp-action-detail { text-align: right; font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 1px; line-height: 1.4; }
 
   .bp-orders { padding: 10px 14px; border-bottom: 1px dashed #222; }
   .bp-order-row { display: flex; justify-content: space-between; font-size: 11px; padding: 3px 0; }
-  .bp-order-label { color: var(--muted); }
-  .bp-order-val { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1px; }
+  .bp-order-label { color: #ffffff; }
+  .bp-order-val { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; }
 
   .bp-tick-strip { display: flex; align-items: center; gap: 6px; padding: 10px 14px; }
   .tick-dot { width: 10px; height: 10px; border-radius: 50%; background: #222; border: 1px solid #333; }
@@ -125,12 +139,12 @@
   .pt-slot { width: 50px; height: 54px; border: 1px solid #222; border-radius: 5px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: #050a0f; }
   .pt-slot.active { border-color: #ffd740; background: rgba(255,215,64,0.05); animation: pulse 1s infinite; }
   .pt-slot.confirmed { border-color: #00e676; background: rgba(0,230,118,0.06); }
-  .pt-label { font-family: 'Bebas Neue', sans-serif; font-size: 16px; color: #4a6272; }
+  .pt-label { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: #4a6272; }
   .pt-price { font-size: 9px; color: #4a6272; }
   .pt-tick  { font-size: 9px; color: #4a6272; }
 
   .bp-footer { padding: 8px 14px; display: flex; justify-content: space-between; align-items: center; background: #050a0e; }
-  .bp-pnl { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 1px; }
+  .bp-pnl { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 1px; }
   .candle-cd { font-size: 9px; color: var(--muted); }
 
   /* ── SIM BANNER ── */
@@ -150,7 +164,7 @@
   /* ── DIAG LOG ── */
   .diag-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
   .diag-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-  .diag-title { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; color: var(--white); }
+  .diag-title { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; color: #ffffff; }
   .diag-subtitle { font-size: 9px; color: var(--muted); margin-top: 1px; }
   .diag-ts { font-size: 9px; color: var(--muted); }
   .diag-controls { display: flex; gap: 6px; align-items: center; }
@@ -206,7 +220,14 @@
   </div>
 
   <div class="session-bar" id="sessionBar"></div>
-  <div class="blackout" id="blackoutBanner">⛔ NY OPEN BLACKOUT 09:00–11:00 EDT — NO NEW TRADES</div>
+  <div class="fil-session-strip off-hours" id="filSessionStrip">
+    <div class="fil-strip-left">
+      <div class="fil-strip-dot" id="filStripDot"></div>
+      <span id="filStripMsg">LOADING SESSION…</span>
+    </div>
+    <div class="fil-strip-right" id="filStripRight">FIL PRIME 1PM–5PM EDT</div>
+  </div>
+  <div class="blackout" id="blackoutBanner">⛔ NY OPEN RISK 09:00–11:00 EDT — NO NEW TRADES</div>
   <div class="sim-banner" id="simBanner" style="display:none"></div>
 
   <!-- DOWNLOAD MODAL -->
@@ -1037,15 +1058,62 @@ function renderClock() {
 }
 
 function renderSession() {
+  // FIL-specific EDT session blocks
+  // Prime window: 13:00–17:00 EDT  (bestHours [13,14,15,16])
+  // NY Open Risk: 09:00–11:00 EDT  (high-volatility blackout)
   const sessions = [
-    {l:'Asia', s:0,e:3,c:'#1a3a4a'},{l:'London',s:3,e:9,c:'#1a3a2a'},
-    {l:'NYOpen',s:9,e:11,c:'#3a1a1a'},{l:'NY',s:11,e:21,c:'#1a2a3a'},{l:'Late',s:21,e:24,c:'#1a1a3a'}
+    { l:'ASIA / OVERNIGHT', s:0,  e:9,  c:'#0d1e2a', cls:'', tip:'Off-hours' },
+    { l:'NY OPEN RISK',     s:9,  e:11, c:'#2a0d0d', cls:'risk', tip:'High-vol — no trades' },
+    { l:'MID-DAY',          s:11, e:13, c:'#0d1a0d', cls:'', tip:'Pre-prime' },
+    { l:'FIL PRIME',        s:13, e:17, c:'#052a14', cls:'prime', tip:'Best hours 1pm–5pm EDT' },
+    { l:'AFTER HOURS',      s:17, e:24, c:'#0d1620', cls:'', tip:'Off-hours' },
   ];
   const h = edtHour();
-  document.getElementById('sessionBar').innerHTML = sessions.map(s =>
-    '<div class="session-seg '+(h>=s.s&&h<s.e?'active':'')+'" style="background:'+s.c+';color:'+(h>=s.s&&h<s.e?'#fff':'var(--muted)')+';flex:'+(s.e-s.s)+'">'+s.l+'</div>'
-  ).join('');
+  document.getElementById('sessionBar').innerHTML = sessions.map(s => {
+    const isCurrent = h >= s.s && h < s.e;
+    const extraCls  = isCurrent ? (s.cls ? s.cls : 'now') : s.cls;
+    const txtColor  = isCurrent ? '#ffffff' : 'var(--muted)';
+    return '<div class="session-seg '+extraCls+'" style="background:'+s.c+';color:'+txtColor+';flex:'+(s.e-s.s)+'" title="'+s.tip+'">'+s.l+'</div>';
+  }).join('');
   document.getElementById('blackoutBanner').style.display = inBlackout()?'block':'none';
+  renderFilSessionStrip(h);
+}
+
+function renderFilSessionStrip(h) {
+  const strip   = document.getElementById('filSessionStrip');
+  const dot     = document.getElementById('filStripDot');
+  const msg     = document.getElementById('filStripMsg');
+  const right   = document.getElementById('filStripRight');
+  const FIL_PRIME_START = 13;
+  const FIL_PRIME_END   = 17;
+  const isPrime = h >= FIL_PRIME_START && h < FIL_PRIME_END;
+  const isRisk  = h >= 9 && h < 11;
+
+  // Remove all state classes
+  strip.classList.remove('prime-active','prime-waiting','risk-zone','off-hours');
+  dot.classList.remove('pulse');
+
+  if (isPrime) {
+    strip.classList.add('prime-active');
+    dot.classList.add('pulse');
+    const remaining = FIL_PRIME_END - h - 1;
+    msg.textContent   = '● FIL PRIME SESSION ACTIVE';
+    right.textContent = 'ENDS ' + FIL_PRIME_END + ':00 EDT · ~' + (FIL_PRIME_END - h) + 'H REMAINING';
+  } else if (isRisk) {
+    strip.classList.add('risk-zone');
+    msg.textContent   = '⛔ NY OPEN RISK ZONE — NO TRADES';
+    right.textContent = 'FIL PRIME OPENS ' + FIL_PRIME_START + ':00 EDT (1PM)';
+  } else if (h < FIL_PRIME_START) {
+    const hoursLeft = FIL_PRIME_START - h;
+    strip.classList.add('prime-waiting');
+    msg.textContent   = '◌ FIL PRIME OPENS IN ~' + hoursLeft + 'H';
+    right.textContent = '1:00PM–5:00PM EDT · LONG-ONLY';
+  } else {
+    const hoursLeft = (24 - h) + FIL_PRIME_START;
+    strip.classList.add('off-hours');
+    msg.textContent   = '◌ NEXT FIL PRIME IN ~' + hoursLeft + 'H';
+    right.textContent = 'RESUMES 1:00PM EDT TOMORROW';
+  }
 }
 
 function renderCombined() {
