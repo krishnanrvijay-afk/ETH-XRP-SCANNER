@@ -45,16 +45,18 @@
   /* ── SESSION BAR ── */
   .session-bar { display: flex; gap: 3px; margin-bottom: 6px; }
   .session-seg { flex: 1; height: 30px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-family: 'Bebas Neue', sans-serif; font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; }
-  .session-seg.prime { outline: 2px solid var(--green); }
-  .session-seg.risk  { outline: 2px solid var(--red); }
-  .session-seg.now   { outline: 2px solid var(--yellow); }
+  .session-seg.prime   { outline: 2px solid var(--green); }
+  .session-seg.evening { outline: 2px solid var(--blue); }
+  .session-seg.risk    { outline: 2px solid var(--red); }
+  .session-seg.now     { outline: 2px solid var(--yellow); }
 
   /* ── FIL PRIME STATUS STRIP ── */
   .fil-session-strip { display: flex; align-items: center; justify-content: space-between; border-radius: 5px; padding: 8px 12px; margin-bottom: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1.5px; border: 1px solid transparent; transition: all 0.4s; }
-  .fil-session-strip.prime-active  { background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.35); color: var(--green); }
-  .fil-session-strip.prime-waiting { background: rgba(255,215,64,0.06); border-color: rgba(255,215,64,0.25); color: var(--yellow); }
-  .fil-session-strip.risk-zone     { background: rgba(255,61,61,0.08); border-color: rgba(255,61,61,0.30); color: var(--red); }
-  .fil-session-strip.off-hours     { background: rgba(74,98,114,0.08); border-color: rgba(74,98,114,0.20); color: var(--muted); }
+  .fil-session-strip.prime-active   { background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.35); color: var(--green); }
+  .fil-session-strip.evening-active { background: rgba(0,200,255,0.08); border-color: rgba(0,200,255,0.30); color: var(--blue); }
+  .fil-session-strip.prime-waiting  { background: rgba(255,215,64,0.06); border-color: rgba(255,215,64,0.25); color: var(--yellow); }
+  .fil-session-strip.risk-zone      { background: rgba(255,61,61,0.08); border-color: rgba(255,61,61,0.30); color: var(--red); }
+  .fil-session-strip.off-hours      { background: rgba(74,98,114,0.08); border-color: rgba(74,98,114,0.20); color: var(--muted); }
   .fil-strip-left  { display: flex; align-items: center; gap: 8px; }
   .fil-strip-dot   { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
   .fil-strip-dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
@@ -225,7 +227,7 @@
       <div class="fil-strip-dot" id="filStripDot"></div>
       <span id="filStripMsg">LOADING SESSION…</span>
     </div>
-    <div class="fil-strip-right" id="filStripRight">FIL PRIME 1PM–5PM EDT</div>
+    <div class="fil-strip-right" id="filStripRight">ACTIVE 1PM–9PM EDT</div>
   </div>
   <div class="blackout" id="blackoutBanner">⛔ NY OPEN RISK 09:00–11:00 EDT — NO NEW TRADES</div>
   <div class="sim-banner" id="simBanner" style="display:none"></div>
@@ -319,7 +321,7 @@ window.onerror = function(msg, src, line) {
 const TOKEN_CONFIG = {
   FILUSDT: {
     margin: 1000, leverage: 50, notional: 50000, contractSize: 1,
-    bestHours: [13,14,15,16], label: 'FIL', tick: 0.001,
+    bestHours: [13,14,15,16,17,18,19,20], label: 'FIL', tick: 0.001,
     longOnly: true,
   },
 };
@@ -1058,15 +1060,18 @@ function renderClock() {
 }
 
 function renderSession() {
-  // FIL-specific EDT session blocks
-  // Prime window: 13:00–17:00 EDT  (bestHours [13,14,15,16])
-  // NY Open Risk: 09:00–11:00 EDT  (high-volatility blackout)
+  // FIL-specific EDT session blocks — calibrated from 2026-05-27 diagnostic log (380 bands, 22hrs)
+  // FIL PRIME  13–17 EDT: highest band density (17–24/hr), long-only primary window
+  // EVENING EDGE 17–21 EDT: best fills-per-band in US hours (4.7–13.0/band) — log-confirmed active
+  // NY OPEN RISK 09–11 EDT: dominant spike-sweep zone — blackout enforced
+  // MID-DAY 11–13 EDT: low efficiency (2.8 fills/band), transition chop — observe only
   const sessions = [
-    { l:'ASIA / OVERNIGHT', s:0,  e:9,  c:'#0d1e2a', cls:'', tip:'Off-hours' },
-    { l:'NY OPEN RISK',     s:9,  e:11, c:'#2a0d0d', cls:'risk', tip:'High-vol — no trades' },
-    { l:'MID-DAY',          s:11, e:13, c:'#0d1a0d', cls:'', tip:'Pre-prime' },
-    { l:'FIL PRIME',        s:13, e:17, c:'#052a14', cls:'prime', tip:'Best hours 1pm–5pm EDT' },
-    { l:'AFTER HOURS',      s:17, e:24, c:'#0d1620', cls:'', tip:'Off-hours' },
+    { l:'ASIA / OVERNIGHT', s:0,  e:9,  c:'#0d1e2a', cls:'', tip:'Off-hours — session auto-stops at 09:00 EDT' },
+    { l:'NY OPEN RISK',     s:9,  e:11, c:'#2a0d0d', cls:'risk', tip:'High-vol spike zone — no trades (log: 40% spike-sweep failures)' },
+    { l:'MID-DAY',          s:11, e:13, c:'#0d1520', cls:'', tip:'Low efficiency — 2.8 fills/band (log data), observe only' },
+    { l:'FIL PRIME',        s:13, e:17, c:'#052a14', cls:'prime', tip:'Primary — 17–24 bands/hr · best on bullish FIL days' },
+    { l:'EVENING EDGE',     s:17, e:21, c:'#031a2a', cls:'evening', tip:'Log-confirmed: 4.7–13.0 fills/band · cleaner oscillation post-US-close' },
+    { l:'LATE NIGHT',       s:21, e:24, c:'#0d1620', cls:'', tip:'Off-hours' },
   ];
   const h = edtHour();
   document.getElementById('sessionBar').innerHTML = sessions.map(s => {
@@ -1084,34 +1089,40 @@ function renderFilSessionStrip(h) {
   const dot     = document.getElementById('filStripDot');
   const msg     = document.getElementById('filStripMsg');
   const right   = document.getElementById('filStripRight');
-  const FIL_PRIME_START = 13;
-  const FIL_PRIME_END   = 17;
-  const isPrime = h >= FIL_PRIME_START && h < FIL_PRIME_END;
-  const isRisk  = h >= 9 && h < 11;
+  const PRIME_START   = 13;
+  const PRIME_END     = 17;
+  const EVENING_START = 17;
+  const EVENING_END   = 21;
+  const isPrime   = h >= PRIME_START   && h < PRIME_END;
+  const isEvening = h >= EVENING_START && h < EVENING_END;
+  const isRisk    = h >= 9 && h < 11;
 
-  // Remove all state classes
-  strip.classList.remove('prime-active','prime-waiting','risk-zone','off-hours');
+  strip.classList.remove('prime-active','evening-active','prime-waiting','risk-zone','off-hours');
   dot.classList.remove('pulse');
 
   if (isPrime) {
     strip.classList.add('prime-active');
     dot.classList.add('pulse');
-    const remaining = FIL_PRIME_END - h - 1;
     msg.textContent   = '● FIL PRIME SESSION ACTIVE';
-    right.textContent = 'ENDS ' + FIL_PRIME_END + ':00 EDT · ~' + (FIL_PRIME_END - h) + 'H REMAINING';
+    right.textContent = 'ENDS ' + PRIME_END + ':00 EDT · ~' + (PRIME_END - h) + 'H REMAINING';
+  } else if (isEvening) {
+    strip.classList.add('evening-active');
+    dot.classList.add('pulse');
+    msg.textContent   = '◈ EVENING EDGE ACTIVE';
+    right.textContent = 'ENDS ' + EVENING_END + ':00 EDT · ~' + (EVENING_END - h) + 'H · LOG: 4.7–13× FILLS/BAND';
   } else if (isRisk) {
     strip.classList.add('risk-zone');
     msg.textContent   = '⛔ NY OPEN RISK ZONE — NO TRADES';
-    right.textContent = 'FIL PRIME OPENS ' + FIL_PRIME_START + ':00 EDT (1PM)';
-  } else if (h < FIL_PRIME_START) {
-    const hoursLeft = FIL_PRIME_START - h;
+    right.textContent = 'FIL PRIME OPENS ' + PRIME_START + ':00 EDT (1PM)';
+  } else if (h < PRIME_START) {
+    const hoursLeft = h < 9 ? PRIME_START - h : PRIME_START - h;
     strip.classList.add('prime-waiting');
-    msg.textContent   = '◌ FIL PRIME OPENS IN ~' + hoursLeft + 'H';
-    right.textContent = '1:00PM–5:00PM EDT · LONG-ONLY';
+    msg.textContent   = '◌ FIL PRIME OPENS IN ~' + (PRIME_START - h) + 'H';
+    right.textContent = '1PM–5PM EDT  ·  EVENING EDGE 5PM–9PM EDT  ·  LONG-ONLY';
   } else {
-    const hoursLeft = (24 - h) + FIL_PRIME_START;
+    const hoursLeft = (24 - h) + PRIME_START;
     strip.classList.add('off-hours');
-    msg.textContent   = '◌ NEXT FIL PRIME IN ~' + hoursLeft + 'H';
+    msg.textContent   = '◌ NEXT SESSION IN ~' + hoursLeft + 'H';
     right.textContent = 'RESUMES 1:00PM EDT TOMORROW';
   }
 }
