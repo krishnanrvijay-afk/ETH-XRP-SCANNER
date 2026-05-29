@@ -69,6 +69,12 @@
   .api-panel-title { font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; color: var(--blue); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
   .api-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
   .api-row:last-child { border-bottom: none; }
+
+  /* ── PER-CARD API STRIP ── */
+  .card-api-strip { background: rgba(0,200,255,0.04); border: 1px solid rgba(0,200,255,0.22); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; transition: border-color 0.2s, opacity 0.2s; }
+  .card-api-strip.disabled { border-color: rgba(74,98,114,0.2); opacity: 0.65; }
+  .card-api-strip.enabled  { border-color: rgba(0,230,118,0.35); }
+  .card-api-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
   .api-row-label { color: #ffffff; letter-spacing: 1px; text-transform: uppercase; font-weight: 700; }
   .api-row-val { font-family: 'JetBrains Mono', monospace; font-size: 10px; max-width: 55%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conn-ok    { color: var(--green); }
@@ -243,42 +249,6 @@
     </div>
   </div>
 
-  <!-- API STATUS PANEL -->
-  <div class="api-panel disabled" id="apiPanel">
-    <div class="api-panel-title">
-      <label class="api-toggle-wrap" title="Enable to send real orders to MEXC demo account">
-        <input type="checkbox" id="apiToggle" onchange="toggleApi()">
-        <span class="api-toggle-track"><span class="api-toggle-thumb"></span></span>
-        <span class="api-toggle-label" id="apiToggleLabel">API OFF · PAPER ONLY</span>
-      </label>
-      <button class="closeall-btn" id="closeAllBtn" onclick="emergencyCloseAll()" disabled title="Enable API first">⚠ CLOSE ALL</button>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">Connection</span>
-      <span class="api-row-val conn-check" id="apiConn">CHECKING…</span>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">Lot size</span>
-      <span class="api-row-val" id="apiLotsDisplay">—</span>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">Entry Order</span>
-      <span class="api-row-val" id="apiEntryId">—</span>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">TP Order</span>
-      <span class="api-row-val" id="apiTpId">—</span>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">SL Plan Order</span>
-      <span class="api-row-val" id="apiSlId">—</span>
-    </div>
-    <div class="api-row">
-      <span class="api-row-label">Last API Event</span>
-      <span class="api-row-val" id="apiLastEvent">—</span>
-    </div>
-  </div>
-
   <!-- COMBINED STATS -->
   <div class="combined">
     <div class="cpill"><div class="cpill-label">P&L (paper)</div><div class="cpill-value" id="totalPnl">+$0</div></div>
@@ -342,8 +312,10 @@ const API_LOTS      = 100;
 const API_LEVERAGE  = 50;
 
 // ── API ENABLE FLAG ───────────────────────────────────────────────────────────
-// Starts OFF — paper simulation runs regardless.  Toggle ON to send real orders.
-let apiEnabled = false;
+// Per-symbol. Starts OFF — paper simulation runs regardless.
+// Toggle per-card ON to send live orders for that pair only.
+const apiEnabled = {};
+SYMBOLS.forEach(s => { apiEnabled[s] = false; });
 
 // ── TRADING CONSTANTS ─────────────────────────────────────────────────────────
 const TAKER_FEE      = 0.0002;
@@ -483,15 +455,15 @@ function inBlackoutSym(sym) { return !TOKEN_CONFIG[sym].bestHours.includes(edtHo
 // All API calls are non-blocking: they post to the server, log success/failure
 // in the diag log, and never halt the main poll loop on failure.
 
-function setApiStatus(field, value, cls) {
-  const el = document.getElementById('apiStatus_' + field) || document.getElementById('api' + field);
+function setApiStatus(sym, field, value, cls) {
+  const el = document.getElementById('api_'+sym+'_'+field);
   if (el) { el.textContent = value; el.className = 'api-row-val ' + (cls || ''); }
-  const last = document.getElementById('apiLastEvent');
-  if (last) last.textContent = field + ': ' + value;
+  const last = document.getElementById('api_'+sym+'_LastEvent');
+  if (last && field !== 'LastEvent') last.textContent = field + ': ' + value;
 }
 
 async function apiOpenLong(sym) {
-  if (!apiEnabled) { dp(sym, pollCount+'.API', 'API SKIP', 'toggle off — paper only', 'muted'); return; }
+  if (!apiEnabled[sym]) { dp(sym, pollCount+'.API', 'API SKIP', 'toggle off — paper only', 'muted'); return; }
   const st = state[sym];
   const price = st.oscLower;
   const qty   = API_LOTS;
@@ -506,19 +478,19 @@ async function apiOpenLong(sym) {
     if (data.code === 200 && data.data) {
       st.apiEntryOrderId = data.data;
       dp(sym, pollCount+'.API', 'API ENTRY ORDER PLACED', 'orderId='+data.data, 'ok');
-      setApiStatus('EntryId', data.data, 'conn-ok');
+      setApiStatus(sym, 'EntryId', data.data, 'conn-ok');
     } else {
       dp(sym, pollCount+'.API', 'API ENTRY ORDER FAILED', JSON.stringify(data), 'bad');
-      setApiStatus('EntryId', 'FAILED: '+(data.message||data.msg||JSON.stringify(data)), 'conn-err');
+      setApiStatus(sym, 'EntryId', 'FAILED: '+(data.message||data.msg||JSON.stringify(data)), 'conn-err');
     }
   } catch(e) {
     dp(sym, pollCount+'.API', 'API ENTRY ORDER ERROR', e.message, 'bad');
-    setApiStatus('EntryId', 'ERR: '+e.message, 'conn-err');
+    setApiStatus(sym, 'EntryId', 'ERR: '+e.message, 'conn-err');
   }
 }
 
 async function apiPlaceExits(sym) {
-  if (!apiEnabled) { dp(sym, pollCount+'.API', 'API SKIP', 'toggle off — no exits placed', 'muted'); return; }
+  if (!apiEnabled[sym]) { dp(sym, pollCount+'.API', 'API SKIP', 'toggle off — no exits placed', 'muted'); return; }
   const st  = state[sym];
   const lng = st.openLong;
   if (!lng) return;
@@ -536,14 +508,14 @@ async function apiPlaceExits(sym) {
     if (data.code === 200 && data.data) {
       st.apiTpOrderId = data.data;
       dp(sym, pollCount+'.API', 'API TP ORDER PLACED', 'orderId='+data.data, 'ok');
-      setApiStatus('TpId', data.data, 'conn-ok');
+      setApiStatus(sym, 'TpId', data.data, 'conn-ok');
     } else {
       dp(sym, pollCount+'.API', 'API TP ORDER FAILED', JSON.stringify(data), 'bad');
-      setApiStatus('TpId', 'FAILED', 'conn-err');
+      setApiStatus(sym, 'TpId', 'FAILED', 'conn-err');
     }
   } catch(e) {
     dp(sym, pollCount+'.API', 'API TP ORDER ERROR', e.message, 'bad');
-    setApiStatus('TpId', 'ERR: '+e.message, 'conn-err');
+    setApiStatus(sym, 'TpId', 'ERR: '+e.message, 'conn-err');
   }
 
   // SL: stop-market plan order at band lower - 2 ticks
@@ -558,24 +530,24 @@ async function apiPlaceExits(sym) {
     if (data2.code === 200 && data2.data) {
       st.apiSlOrderId = data2.data;
       dp(sym, pollCount+'.API', 'API SL PLAN ORDER PLACED', 'orderId='+data2.data, 'ok');
-      setApiStatus('SlId', data2.data, 'conn-ok');
+      setApiStatus(sym, 'SlId', data2.data, 'conn-ok');
     } else {
       dp(sym, pollCount+'.API', 'API SL ORDER FAILED', JSON.stringify(data2), 'bad');
-      setApiStatus('SlId', 'FAILED', 'conn-err');
+      setApiStatus(sym, 'SlId', 'FAILED', 'conn-err');
     }
   } catch(e2) {
     dp(sym, pollCount+'.API', 'API SL ORDER ERROR', e2.message, 'bad');
-    setApiStatus('SlId', 'ERR: '+e2.message, 'conn-err');
+    setApiStatus(sym, 'SlId', 'ERR: '+e2.message, 'conn-err');
   }
 }
 
 async function apiCancelEntry(sym) {
-  if (!apiEnabled) return;
+  if (!apiEnabled[sym]) return;
   const st = state[sym];
   if (!st.apiEntryOrderId) return;
   const oid = st.apiEntryOrderId;
   st.apiEntryOrderId = null;
-  setApiStatus('EntryId', '—', '');
+  setApiStatus(sym, 'EntryId', '—', '');
   dp(sym, pollCount+'.API', 'API CANCEL ENTRY', 'orderId='+oid, 'info');
   try {
     const r = await fetch('/api/fil/order/cancel', {
@@ -591,12 +563,12 @@ async function apiCancelEntry(sym) {
 }
 
 async function apiCancelTp(sym) {
-  if (!apiEnabled) return;
+  if (!apiEnabled[sym]) return;
   const st = state[sym];
   if (!st.apiTpOrderId) return;
   const oid = st.apiTpOrderId;
   st.apiTpOrderId = null;
-  setApiStatus('TpId', '—', '');
+  setApiStatus(sym, 'TpId', '—', '');
   dp(sym, pollCount+'.API', 'API CANCEL TP', 'orderId='+oid, 'info');
   try {
     const r = await fetch('/api/fil/order/cancel', {
@@ -612,12 +584,12 @@ async function apiCancelTp(sym) {
 }
 
 async function apiCancelSl(sym) {
-  if (!apiEnabled) return;
+  if (!apiEnabled[sym]) return;
   const st = state[sym];
   if (!st.apiSlOrderId) return;
   const oid = st.apiSlOrderId;
   st.apiSlOrderId = null;
-  setApiStatus('SlId', '—', '');
+  setApiStatus(sym, 'SlId', '—', '');
   dp(sym, pollCount+'.API', 'API CANCEL SL PLAN', 'orderId='+oid, 'info');
   try {
     const r = await fetch('/api/fil/planorder/cancel', {
@@ -637,10 +609,9 @@ async function apiCancelAll(sym) {
   await Promise.all([apiCancelEntry(sym), apiCancelTp(sym), apiCancelSl(sym)]);
 }
 
-// Emergency close: market-close entire position
-async function emergencyCloseAll() {
-  if (!apiEnabled) { alert('Enable the API toggle first before using CLOSE ALL.'); return; }
-  const sym = 'FILUSDT';
+// Emergency close: market-close entire position for a specific symbol
+async function emergencyCloseAll(sym) {
+  if (!apiEnabled[sym]) { alert('Enable the '+TOKEN_CONFIG[sym].label+' API toggle first.'); return; }
   dp(sym, 'MANUAL', 'EMERGENCY CLOSE ALL', 'market close vol='+API_LOTS, 'bad');
   try {
     const r = await fetch('/api/fil/closeall', {
@@ -656,51 +627,54 @@ async function emergencyCloseAll() {
   }
 }
 
-// ── TOGGLE API ON / OFF ───────────────────────────────────────────────────────
-function toggleApi() {
-  apiEnabled = document.getElementById('apiToggle').checked;
-  const panel    = document.getElementById('apiPanel');
-  const label    = document.getElementById('apiToggleLabel');
-  const closeBtn = document.getElementById('closeAllBtn');
+// ── TOGGLE API ON / OFF — per symbol ─────────────────────────────────────────
+function toggleApi(sym) {
+  apiEnabled[sym] = document.getElementById('apiToggle_'+sym).checked;
+  const strip    = document.getElementById('card_api_'+sym);
+  const label    = document.getElementById('apiToggleLabel_'+sym);
+  const closeBtn = document.getElementById('closeAllBtn_'+sym);
+  const cfg      = TOKEN_CONFIG[sym];
 
-  if (apiEnabled) {
-    panel.classList.remove('disabled');
-    label.textContent = 'API ON · LIVE ORDERS';
+  if (apiEnabled[sym]) {
+    strip.classList.remove('disabled');
+    strip.classList.add('enabled');
+    label.textContent = cfg.label + ' API ON · LIVE ORDERS';
     closeBtn.disabled = false;
-    dp('FILUSDT', 'API.TOG', 'API ENABLED', 'live order execution active · running health check', 'ok');
-    apiHealthCheck();
+    dp(sym, 'API.TOG', 'API ENABLED', 'live order execution active · running health check', 'ok');
+    apiHealthCheck(sym);
   } else {
-    panel.classList.add('disabled');
-    label.textContent = 'API OFF · PAPER ONLY';
+    strip.classList.remove('enabled');
+    strip.classList.add('disabled');
+    label.textContent = cfg.label + ' API OFF · PAPER ONLY';
     closeBtn.disabled = true;
-    dp('FILUSDT', 'API.TOG', 'API DISABLED', 'reverted to paper mode · cancelling open orders', 'warn');
-    // Cancel any outstanding orders safely
-    apiCancelAll('FILUSDT');
-    ['EntryId','TpId','SlId'].forEach(f => setApiStatus(f, '—', ''));
-    document.getElementById('apiLastEvent').textContent = 'API disabled';
-    const conn = document.getElementById('apiConn');
+    dp(sym, 'API.TOG', 'API DISABLED', 'reverted to paper mode · cancelling open orders', 'warn');
+    apiCancelAll(sym);
+    ['EntryId','TpId','SlId'].forEach(f => setApiStatus(sym, f, '—', ''));
+    const lastEl = document.getElementById('api_'+sym+'_LastEvent');
+    if (lastEl) lastEl.textContent = 'API disabled';
+    const conn = document.getElementById('apiConn_'+sym);
     if (conn) { conn.textContent = 'DISABLED'; conn.className = 'api-row-val'; }
   }
 }
 
-// ── HEALTH CHECK ──────────────────────────────────────────────────────────────
-async function apiHealthCheck() {
-  if (!apiEnabled) return;
-  const el = document.getElementById('apiConn');
+// ── HEALTH CHECK — per symbol ─────────────────────────────────────────────────
+async function apiHealthCheck(sym) {
+  if (!apiEnabled[sym]) return;
+  const el = document.getElementById('apiConn_'+sym);
   if (el) { el.textContent = 'CHECKING…'; el.className = 'api-row-val conn-check'; }
   try {
     const r = await fetch('/api/fil/health');
     const data = await r.json();
     if (data.ok) {
       if (el) { el.textContent = 'CONNECTED ✓'; el.className = 'api-row-val conn-ok'; }
-      dp('FILUSDT', '0.API', 'API HEALTH', 'connected · demo account ready', 'ok');
+      dp(sym, '0.API', 'API HEALTH', 'connected · demo account ready', 'ok');
     } else {
       if (el) { el.textContent = 'ERROR: '+(data.error||'unknown'); el.className = 'api-row-val conn-err'; }
-      dp('FILUSDT', '0.API', 'API HEALTH FAIL', data.error||JSON.stringify(data), 'bad');
+      dp(sym, '0.API', 'API HEALTH FAIL', data.error||JSON.stringify(data), 'bad');
     }
   } catch(e) {
     if (el) { el.textContent = 'UNREACHABLE: '+e.message; el.className = 'api-row-val conn-err'; }
-    dp('FILUSDT', '0.API', 'API HEALTH ERROR', e.message, 'bad');
+    dp(sym, '0.API', 'API HEALTH ERROR', e.message, 'bad');
   }
 }
 
@@ -1198,7 +1172,9 @@ function renderTicker(sym) {
     }
   }
 
-  card.innerHTML =
+  const dataEl = document.getElementById('card_data_'+sym);
+  if (!dataEl) return;
+  dataEl.innerHTML =
     '<div class="bp-header"><div class="bp-token">'+cfg.label+'</div><div class="bp-badges">'+badgeHtml+'</div></div>' +
     '<div class="bp-grid">' +
       '<div class="bp-cell"><div class="bp-cell-label">'+priceCellLabel+'</div><div class="bp-cell-value '+priceColor+'">'+fmtPrice(st.lastPrice,st.tick)+'</div></div>' +
@@ -1280,9 +1256,34 @@ function switchTab(name) {
 }
 
 // ── CARD BUILDER ─────────────────────────────────────────────────────────────
+function buildApiStrip(sym) {
+  const cfg = TOKEN_CONFIG[sym];
+  return (
+    '<div class="card-api-strip disabled" id="card_api_'+sym+'">'+
+      '<div class="card-api-top">'+
+        '<label class="api-toggle-wrap" title="Enable to send real '+cfg.label+' orders to MEXC demo account">'+
+          '<input type="checkbox" id="apiToggle_'+sym+'" onchange="toggleApi(\''+sym+'\')">'+
+          '<span class="api-toggle-track"><span class="api-toggle-thumb"></span></span>'+
+          '<span class="api-toggle-label" id="apiToggleLabel_'+sym+'">'+cfg.label+' API OFF · PAPER ONLY</span>'+
+        '</label>'+
+        '<button class="closeall-btn" id="closeAllBtn_'+sym+'" onclick="emergencyCloseAll(\''+sym+'\')" disabled title="Enable API first">⚠ CLOSE ALL</button>'+
+      '</div>'+
+      '<div class="api-row"><span class="api-row-label">Connection</span><span class="api-row-val" id="apiConn_'+sym+'">DISABLED · toggle to enable</span></div>'+
+      '<div class="api-row"><span class="api-row-label">Entry Order</span><span class="api-row-val" id="api_'+sym+'_EntryId">—</span></div>'+
+      '<div class="api-row"><span class="api-row-label">TP / SL Plan</span><span class="api-row-val" id="api_'+sym+'_TpId">—</span> / <span class="api-row-val" id="api_'+sym+'_SlId">—</span></div>'+
+      '<div class="api-row"><span class="api-row-label">Last Event</span><span class="api-row-val" id="api_'+sym+'_LastEvent">API disabled</span></div>'+
+    '</div>'
+  );
+}
+
 function buildCards() {
   document.getElementById('tickerCards').innerHTML =
-    SYMBOLS.map(s => '<div class="ticker-card border-wait" id="card_'+s+'"></div>').join('');
+    SYMBOLS.map(s =>
+      '<div class="ticker-card border-wait" id="card_'+s+'">'+
+        buildApiStrip(s)+
+        '<div id="card_data_'+s+'"></div>'+
+      '</div>'
+    ).join('');
   document.getElementById('diagCards').innerHTML = SYMBOLS.map(s =>
     '<div class="diag-card">'+
       '<div class="diag-header">'+
@@ -1329,9 +1330,12 @@ function clearAll() {
   sessionRunning  = true;
   pollerStopped   = false;
   diagEnabled     = true;
-  // reset API status display
-  ['EntryId','TpId','SlId'].forEach(f => setApiStatus(f, '—', ''));
-  document.getElementById('apiLastEvent').textContent = '—';
+  // reset per-symbol API status display
+  SYMBOLS.forEach(sym => {
+    ['EntryId','TpId','SlId'].forEach(f => setApiStatus(sym, f, '—', ''));
+    const lastEl = document.getElementById('api_'+sym+'_LastEvent');
+    if (lastEl) lastEl.textContent = '—';
+  });
   clearDiag();
   renderCombined();
   SYMBOLS.forEach(renderTicker);
@@ -1382,14 +1386,7 @@ setInterval(renderClock, 1000);
 setInterval(renderSession, 60000);
 renderClock(); renderSession();
 
-// Show lot size in API panel
-document.getElementById('apiLotsDisplay').textContent = API_LOTS + ' contracts · ' + API_LEVERAGE + 'x leverage';
-
-// API starts disabled — show that in the connection row immediately
-(function() {
-  const conn = document.getElementById('apiConn');
-  if (conn) { conn.textContent = 'DISABLED · toggle to enable'; conn.className = 'api-row-val'; }
-})();
+// Per-symbol: connection rows already initialised by buildApiStrip — nothing extra needed.
 
 sessionStartTs   = Date.now();
 sessionStartEdtH = edtHour();
