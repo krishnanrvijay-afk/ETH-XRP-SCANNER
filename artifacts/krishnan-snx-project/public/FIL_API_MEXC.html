@@ -324,13 +324,19 @@ const TOKEN_CONFIG = {
     bestHours: [13,14,15,16,17,18,19,20], label: 'FIL', tick: 0.001,
     longOnly: true,
   },
+  ATOMUSDT: {
+    margin: 1000, leverage: 50, notional: 50000, contractSize: 1,
+    bestHours: [13,14,15,16,17,18,19,20], label: 'ATOM', tick: 0.001,
+    longOnly: true,
+  },
 };
-const SYMBOLS   = ['FILUSDT'];
-const MEXC_SYM  = { FILUSDT: 'FILECOIN_USDT' };
+const SYMBOLS   = ['FILUSDT', 'ATOMUSDT'];
+const MEXC_SYM  = { FILUSDT: 'FILECOIN_USDT', ATOMUSDT: 'ATOM_USDT' };
 
 // ── API EXECUTION CONFIG ──────────────────────────────────────────────────────
-// API_LOTS: number of MEXC contracts per trade.  1 contract = 1 FIL on MEXC.
-// At FIL ~$1.00 with 50x leverage: 100 lots = $100 notional = $2 margin (safe for demo).
+// API_LOTS: contracts per trade.  1 contract = 1 token on MEXC futures.
+// FIL ~$1.00 × 100 lots × 50x = $100 notional = $2 margin (safe for demo).
+// ATOM ~$4.50 × 100 lots × 50x = $450 notional = $9 margin (safe for demo).
 // Increase after confirming API connectivity on demo.
 const API_LOTS      = 100;
 const API_LEVERAGE  = 50;
@@ -358,7 +364,7 @@ const CONFIRM_COUNT  = 3;
 
 // ── DIAG LOG ──────────────────────────────────────────────────────────────────
 const DIAG_KEY   = 'fil_api_diag_v1';
-const diagLogs   = { FILUSDT: [] };
+const diagLogs   = { FILUSDT: [], ATOMUSDT: [] };
 let diagEnabled  = true;
 let sessionStartTs  = null;
 let sessionRunning  = false;
@@ -1128,15 +1134,16 @@ function renderFilSessionStrip(h) {
 }
 
 function renderCombined() {
-  const today = state['FILUSDT'].trades.filter(t=>t.ts>=state['FILUSDT'].sessionStart);
+  const today = SYMBOLS.flatMap(s => state[s].trades.filter(t=>t.ts>=state[s].sessionStart));
   const net   = today.reduce((s,t)=>s+(t.net||0), 0);
   const wins  = today.filter(t=>t.outcome==='WIN').length;
   const count = today.length;
+  const bands = SYMBOLS.reduce((s,sym)=>s+state[sym].bandConfirmCount, 0);
   const el    = document.getElementById('totalPnl');
   el.textContent = fmtPnl(net); el.style.color = net>=0?'var(--green)':'var(--red)';
   document.getElementById('totalWr').textContent     = count?Math.round(wins/count*100)+'%':'--';
   document.getElementById('totalTrades').textContent = count;
-  document.getElementById('totalOsc').textContent    = state['FILUSDT'].bandConfirmCount;
+  document.getElementById('totalOsc').textContent    = bands;
 }
 
 function renderTicker(sym) {
@@ -1215,14 +1222,15 @@ function renderDiag(sym) {
 }
 
 function renderFullLog() {
-  const today = state['FILUSDT'].trades.filter(t=>t.ts>=state['FILUSDT'].sessionStart);
+  const today = SYMBOLS.flatMap(s => state[s].trades.filter(t=>t.ts>=state[s].sessionStart))
+                       .sort((a,b)=>b.ts-a.ts);
   const wins  = today.filter(t=>t.outcome==='WIN').length;
   const net   = today.reduce((s,t)=>s+(t.net||0),0);
   document.getElementById('logSummary').textContent = today.length+' trades · '+wins+' W · '+fmtPnl(net);
   document.getElementById('fullTradeLog').innerHTML = today.length
-    ? today.slice().reverse().map(t =>
+    ? today.map(t =>
         '<div class="trade-row '+(t.outcome==='WIN'?'win':'loss')+'" onclick="openDetail(\''+t.id+'\')">'+
-          '<div><div style="font-weight:700">'+t.direction+'</div><div style="color:var(--muted);font-size:10px">'+t.timeOpen+'</div></div>'+
+          '<div><div style="font-weight:700">'+t.sym+' '+t.direction+'</div><div style="color:var(--muted);font-size:10px">'+t.timeOpen+'</div></div>'+
           '<div style="text-align:right"><div style="color:'+(t.net>=0?'var(--green)':'var(--red)')+'">'+fmtPnl(t.net)+'</div><div style="font-size:10px;color:var(--muted)">'+t.exitReason+'</div></div>'+
         '</div>'
       ).join('')
@@ -1259,7 +1267,7 @@ function updateSimBanner() {
   const elMs = Date.now()-sessionStartTs;
   const h=Math.floor(elMs/3600000), m=Math.floor((elMs%3600000)/60000);
   el.style.display='flex'; el.className='sim-banner';
-  el.innerHTML = '<span><span class="live-dot"></span>LIVE · running '+h+'h '+m+'m</span><span>DEMO MODE · FIL LONG-ONLY</span>';
+  el.innerHTML = '<span><span class="live-dot"></span>LIVE · running '+h+'h '+m+'m</span><span>DEMO MODE · FIL + ATOM · LONG-ONLY</span>';
 }
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
@@ -1345,10 +1353,12 @@ async function poll() {
 }
 
 function nextPollMs() {
-  const st  = state['FILUSDT'];
-  const lng = st.openLong;
-  if (lng && lng.fillConfirmed)  return POLL_FILLED;
-  if (lng && !lng.fillConfirmed) return POLL_ARMED;
+  // Use fastest needed interval across all active symbols
+  for (const sym of SYMBOLS) {
+    const lng = state[sym].openLong;
+    if (lng && lng.fillConfirmed)  return POLL_FILLED;
+    if (lng && !lng.fillConfirmed) return POLL_ARMED;
+  }
   return POLL_DETECT;
 }
 
