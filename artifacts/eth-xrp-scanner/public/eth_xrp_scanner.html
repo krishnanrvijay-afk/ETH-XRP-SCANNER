@@ -1154,12 +1154,8 @@ async function processSym(sym) {
   const st  = state[sym];
   const cfg = TOKEN_CONFIG[sym];
 
-  // Skip polling during blackout unless a band is held or a trade is live
-  if (inBlackout(sym) && !st.zwHeldTs && !st.inOsc) {
-    dp(sym, p+'.1', 'BLACKOUT SKIP', 'no poll — outside session window ['+cfg.windowDesc+']', 'muted');
-    return;
-  }
-
+  // Always fetch candles first — price display is live regardless of session window.
+  // The blackout check below only gates detection and trade execution.
   const limit = st.candles.length >= 25 ? 4 : 25;
   dp(sym, p+'.1', 'POLL START', 'fetching '+limit+' candles ['+cfg.venue+']', 'muted');
 
@@ -1180,6 +1176,13 @@ async function processSym(sym) {
   const dayHigh = Math.max(...raw.map(c => c.high));
   const dayLow  = Math.min(...raw.map(c => c.low));
   st.dayRange   = (dayHigh - dayLow) / dayLow * 100;
+
+  // Off-hours: update display with live price but skip detection and trade execution
+  if (inBlackout(sym) && !st.zwHeldTs && !st.inOsc) {
+    dp(sym, p+'.1', 'BLACKOUT SKIP', 'no detection — outside session window ['+cfg.windowDesc+']', 'muted');
+    renderTicker(sym);
+    return;
+  }
 
   dp(sym, p+'.2', 'CANDLES',  raw.length+' in window · fetched '+fresh.length, 'ok');
   dp(sym, p+'.3', 'LAST CLOSE', fmtPrice(last.close, st.tick), 'info');
