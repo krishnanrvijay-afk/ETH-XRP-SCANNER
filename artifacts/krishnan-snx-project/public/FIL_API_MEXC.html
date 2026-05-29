@@ -50,19 +50,14 @@
   .session-seg.risk    { outline: 2px solid var(--red); }
   .session-seg.now     { outline: 2px solid var(--yellow); }
 
-  /* ── FIL PRIME STATUS STRIP ── */
-  .fil-session-strip { display: flex; align-items: center; justify-content: space-between; border-radius: 5px; padding: 8px 12px; margin-bottom: 10px; font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 1.5px; border: 1px solid transparent; transition: all 0.4s; }
-  .fil-session-strip.prime-active   { background: rgba(0,230,118,0.10); border-color: rgba(0,230,118,0.35); color: var(--green); }
-  .fil-session-strip.evening-active { background: rgba(0,200,255,0.08); border-color: rgba(0,200,255,0.30); color: var(--blue); }
-  .fil-session-strip.prime-waiting  { background: rgba(255,215,64,0.06); border-color: rgba(255,215,64,0.25); color: var(--yellow); }
-  .fil-session-strip.risk-zone      { background: rgba(255,61,61,0.08); border-color: rgba(255,61,61,0.30); color: var(--red); }
-  .fil-session-strip.off-hours      { background: rgba(74,98,114,0.08); border-color: rgba(74,98,114,0.20); color: var(--muted); }
-  .fil-strip-left  { display: flex; align-items: center; gap: 8px; }
-  .fil-strip-dot   { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-  .fil-strip-dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
-  .fil-strip-right { font-size: 11px; opacity: 0.7; }
-
-  .blackout { background: rgba(255,61,61,0.08); border: 1px solid rgba(255,61,61,0.25); border-radius: 5px; padding: 7px 12px; margin-bottom: 10px; color: var(--red); font-size: 11px; font-weight: 700; text-align: center; display: none; }
+  /* ── BEST TRADING HOURS (per card) ── */
+  .best-hours-section { margin: 6px 0 2px; border-top: 1px solid var(--border); padding-top: 6px; }
+  .best-hours-label { font-size: 10px; color: var(--white); font-weight: 700; letter-spacing: 1px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .best-hours-pills { display: flex; gap: 3px; flex-wrap: wrap; }
+  .best-hour-pill { font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 8px; background: rgba(26,32,48,0.8); border: 1px solid var(--border); color: var(--muted); font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px; }
+  .best-hour-pill.active { background: rgba(0,230,118,0.12); color: var(--green); border-color: rgba(0,230,118,0.45); }
+  .sess-in  { font-size: 10px; font-weight: 700; color: var(--green); }
+  .sess-out { font-size: 10px; font-weight: 700; color: var(--red); }
 
   /* ── API STATUS PANEL ── */
   .api-panel { background: var(--card); border: 1px solid rgba(0,200,255,0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
@@ -153,7 +148,7 @@
 
   .bp-footer { padding: 8px 14px; display: flex; justify-content: space-between; align-items: center; background: #050a0e; }
   .bp-pnl { font-family: 'Bebas Neue', sans-serif; font-size: 32px; letter-spacing: 1px; }
-  .candle-cd { font-size: 9px; color: var(--muted); }
+  .candle-cd { font-size: 10px; color: var(--cyan); font-weight: 700; margin-top: 2px; }
 
   /* ── SIM BANNER ── */
   .sim-banner { display: none; background: rgba(0,230,118,0.06); border: 1px solid rgba(0,230,118,0.2); border-radius: 5px; padding: 8px 12px; margin-bottom: 10px; font-size: 10px; color: var(--green); font-weight: 700; justify-content: space-between; }
@@ -228,14 +223,6 @@
   </div>
 
   <div class="session-bar" id="sessionBar"></div>
-  <div class="fil-session-strip off-hours" id="filSessionStrip">
-    <div class="fil-strip-left">
-      <div class="fil-strip-dot" id="filStripDot"></div>
-      <span id="filStripMsg">LOADING SESSION…</span>
-    </div>
-    <div class="fil-strip-right" id="filStripRight">ACTIVE 1PM–9PM EDT</div>
-  </div>
-  <div class="blackout" id="blackoutBanner">⛔ NY OPEN RISK 09:00–11:00 EDT — NO NEW TRADES</div>
   <div class="sim-banner" id="simBanner" style="display:none"></div>
 
   <!-- DOWNLOAD MODAL -->
@@ -331,7 +318,6 @@ const ZONE_WINDOW_N  = 4;
 const ZONE_WINDOW_K  = 4;
 const ZONE_MIN_EACH  = 1;
 const BAND_HOLD_HOURS = 4;
-const BLACKOUT_H     = [9, 10];
 const CONFIRM_COUNT  = 3;
 
 // ── DIAG LOG ──────────────────────────────────────────────────────────────────
@@ -389,6 +375,9 @@ function exportTradeCSV() {
 function edtHour() {
   const h = parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hour12:false}).format(new Date()),10);
   return h === 24 ? 0 : h;
+}
+function edtSecond() {
+  return parseInt(new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',second:'numeric'}).format(new Date()),10);
 }
 function nyTzName() {
   const s = new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'short'}).format(new Date());
@@ -448,7 +437,8 @@ SYMBOLS.forEach(s => {
 });
 
 // ── BLACKOUT ──────────────────────────────────────────────────────────────────
-function inBlackout()     { return BLACKOUT_H.includes(edtHour()); }
+// Single concept: each symbol's bestHours array is the sole session gate.
+// inBlackoutSym(sym) drives both poll skips and the per-card UI.
 function inBlackoutSym(sym) { return !TOKEN_CONFIG[sym].bestHours.includes(edtHour()); }
 
 // ── API CALLS (fire-and-forget with logging) ───────────────────────────────────
@@ -1037,6 +1027,13 @@ function renderClock() {
   const t = new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date());
   document.getElementById('clock').textContent = t + ' ' + nyTzName();
   document.getElementById('sessionLabel').textContent = sessionName(edtHour());
+  // Update per-card candle countdown every second
+  const secs = 60 - edtSecond();
+  const cdText = 'next ' + (secs >= 60 ? 60 : secs) + 's';
+  SYMBOLS.forEach(sym => {
+    const cd = document.getElementById('candle-cd-'+sym);
+    if (cd) cd.textContent = cdText;
+  });
 }
 
 function renderSession() {
@@ -1060,51 +1057,6 @@ function renderSession() {
     const txtColor  = isCurrent ? '#ffffff' : 'var(--muted)';
     return '<div class="session-seg '+extraCls+'" style="background:'+s.c+';color:'+txtColor+';flex:'+(s.e-s.s)+'" title="'+s.tip+'">'+s.l+'</div>';
   }).join('');
-  document.getElementById('blackoutBanner').style.display = inBlackout()?'block':'none';
-  renderFilSessionStrip(h);
-}
-
-function renderFilSessionStrip(h) {
-  const strip   = document.getElementById('filSessionStrip');
-  const dot     = document.getElementById('filStripDot');
-  const msg     = document.getElementById('filStripMsg');
-  const right   = document.getElementById('filStripRight');
-  const PRIME_START   = 13;
-  const PRIME_END     = 17;
-  const EVENING_START = 17;
-  const EVENING_END   = 21;
-  const isPrime   = h >= PRIME_START   && h < PRIME_END;
-  const isEvening = h >= EVENING_START && h < EVENING_END;
-  const isRisk    = h >= 9 && h < 11;
-
-  strip.classList.remove('prime-active','evening-active','prime-waiting','risk-zone','off-hours');
-  dot.classList.remove('pulse');
-
-  if (isPrime) {
-    strip.classList.add('prime-active');
-    dot.classList.add('pulse');
-    msg.textContent   = '● FIL PRIME SESSION ACTIVE';
-    right.textContent = 'ENDS ' + PRIME_END + ':00 EDT · ~' + (PRIME_END - h) + 'H REMAINING';
-  } else if (isEvening) {
-    strip.classList.add('evening-active');
-    dot.classList.add('pulse');
-    msg.textContent   = '◈ EVENING EDGE ACTIVE';
-    right.textContent = 'ENDS ' + EVENING_END + ':00 EDT · ~' + (EVENING_END - h) + 'H · LOG: 4.7–13× FILLS/BAND';
-  } else if (isRisk) {
-    strip.classList.add('risk-zone');
-    msg.textContent   = '⛔ NY OPEN RISK ZONE — NO TRADES';
-    right.textContent = 'FIL PRIME OPENS ' + PRIME_START + ':00 EDT (1PM)';
-  } else if (h < PRIME_START) {
-    const hoursLeft = h < 9 ? PRIME_START - h : PRIME_START - h;
-    strip.classList.add('prime-waiting');
-    msg.textContent   = '◌ FIL PRIME OPENS IN ~' + (PRIME_START - h) + 'H';
-    right.textContent = '1PM–5PM EDT  ·  EVENING EDGE 5PM–9PM EDT  ·  LONG-ONLY';
-  } else {
-    const hoursLeft = (24 - h) + PRIME_START;
-    strip.classList.add('off-hours');
-    msg.textContent   = '◌ NEXT SESSION IN ~' + hoursLeft + 'H';
-    right.textContent = 'RESUMES 1:00PM EDT TOMORROW';
-  }
 }
 
 function renderCombined() {
@@ -1172,18 +1124,38 @@ function renderTicker(sym) {
     }
   }
 
+  // ── Best trading hours pill row ──────────────────────────────────────────
+  const curH      = edtHour();
+  const inSession = cfg.bestHours.includes(curH);
+  const pillsHtml = cfg.bestHours.map(bh => {
+    const isCur = bh === curH;
+    return '<span class="best-hour-pill'+(isCur?' active':'')+'">'+
+           (isCur ? '★ ' : '')+String(bh).padStart(2,'0')+':00</span>';
+  }).join('');
+  const bestHoursHtml =
+    '<div class="best-hours-section">' +
+      '<div class="best-hours-label">BEST TRADING HOURS (EDT)' +
+        '<span class="'+(inSession?'sess-in':'sess-out')+'">'+(inSession?'✓ IN SESSION':'⛔ OFF HOURS')+'</span>' +
+      '</div>' +
+      '<div class="best-hours-pills">'+pillsHtml+'</div>' +
+    '</div>';
+
+  // ── Day range from candles ────────────────────────────────────────────────
+  const dr = st.dayRange || 0;
+
   const dataEl = document.getElementById('card_data_'+sym);
   if (!dataEl) return;
   dataEl.innerHTML =
     '<div class="bp-header"><div class="bp-token">'+cfg.label+'</div><div class="bp-badges">'+badgeHtml+'</div></div>' +
     '<div class="bp-grid">' +
-      '<div class="bp-cell"><div class="bp-cell-label">'+priceCellLabel+'</div><div class="bp-cell-value '+priceColor+'">'+fmtPrice(st.lastPrice,st.tick)+'</div></div>' +
-      '<div class="bp-cell"><div class="bp-cell-label">Session P&L</div><div class="bp-cell-value '+(net>=0?'green':'red')+'">'+fmtPnl(net)+'</div></div>' +
-      '<div class="bp-cell"><div class="bp-cell-label">Win Rate</div><div class="bp-cell-value">'+(today.length?Math.round(wins/today.length*100)+'%':'--')+'</div></div>' +
-      '<div class="bp-cell"><div class="bp-cell-label">Bands / Trades</div><div class="bp-cell-value">'+st.bandConfirmCount+' / '+today.length+'</div></div>' +
+      '<div class="bp-cell"><div class="bp-cell-label">'+priceCellLabel+'</div><div class="bp-cell-value '+priceColor+'">'+fmtPrice(st.lastPrice,st.tick)+'</div><div class="candle-cd" id="candle-cd-'+sym+'">—</div></div>' +
+      '<div class="bp-cell"><div class="bp-cell-label">SESSION P&L</div><div class="bp-cell-value '+(net>=0?'green':'red')+'">'+fmtPnl(net)+'</div></div>' +
+      '<div class="bp-cell"><div class="bp-cell-label">WIN RATE</div><div class="bp-cell-value">'+(today.length?Math.round(wins/today.length*100)+'%':'--')+'</div></div>' +
+      '<div class="bp-cell"><div class="bp-cell-label">DAY RANGE</div><div class="bp-cell-value cyan">'+(dr>0?dr.toFixed(1)+'%':'--')+'</div></div>' +
     '</div>' +
     ordersHtml + tickStripHtml +
-    '<div class="bp-footer"><div class="bp-pnl" style="color:var(--muted)">$'+TOKEN_CONFIG[sym].notional.toLocaleString()+' · '+TOKEN_CONFIG[sym].leverage+'x · LONG-ONLY</div><div class="candle-cd" id="candle-cd-'+sym+'"></div></div>';
+    '<div class="bp-footer"><div class="bp-pnl" style="color:var(--muted)">$'+cfg.notional.toLocaleString()+' · '+cfg.leverage+'x · LONG-ONLY · '+st.bandConfirmCount+' bands · '+today.length+' trades</div></div>' +
+    bestHoursHtml;
 }
 
 function renderDiag(sym) {
