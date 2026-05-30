@@ -1,0 +1,460 @@
+================================================================================
+MEXC SCANNER — TREND DIRECTION CLASSIFICATION LOGIC
+Source: scanner.py (repo: krishnanrvijay-afk/mexc-scanner-krishnan, staging)
+scanner.py SHA: 05de9c21ed285b0bf447816576e91a4c143ce351
+Extracted: 2026-05-30
+================================================================================
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 1 — COMPLETE classify_trend() FUNCTION WITH LINE NUMBERS
+────────────────────────────────────────────────────────────────────────────────
+
+scanner.py, lines 192–239:
+
+  192  def classify_trend(klines_5m, klines_1h, current_price, adx=None):
+  193      """Classify market trend using MA structure and KDJ momentum."""
+  194      if len(klines_5m) < 30 or len(klines_1h) < 60:
+  195          return "Choppy"
+  196  
+  197      closes_1h = [c["close"] for c in klines_1h]
+  198      closes_5m = [c["close"] for c in klines_5m]
+  199  
+  200      ma10_1h = sma(closes_1h, 10)
+  201      ma30_1h = sma(closes_1h, 30)
+  202      ma60_1h = sma(closes_1h, 60)
+  203      ma5_5m  = sma(closes_5m,  5)
+  204      ma10_5m = sma(closes_5m, 10)
+  205      ma30_5m = sma(closes_5m, 30)
+  206  
+  207      if not all([ma10_1h, ma30_1h, ma60_1h, ma5_5m, ma10_5m, ma30_5m]):
+  208          return "Choppy"
+  209  
+  210      _, _, j_cur  = kdj(klines_1h)
+  211      _, _, j_prev = kdj(klines_1h[:-1])
+  212      j_rising  = (j_cur is not None and j_prev is not None and j_cur > j_prev)
+  213      j_falling = (j_cur is not None and j_prev is not None and j_cur < j_prev)
+  214  
+  215      pct_from_ma60 = (current_price - ma60_1h) / ma60_1h * 100
+  216      bull_1h   = ma10_1h > ma30_1h > ma60_1h
+  217      bear_1h   = ma10_1h < ma30_1h < ma60_1h
+  218      bull_5m   = ma5_5m  > ma10_5m  > ma30_5m
+  219      bear_5m   = ma5_5m  < ma10_5m  < ma30_5m
+  220      ma_spread = (max(ma10_1h, ma30_1h, ma60_1h) - min(ma10_1h, ma30_1h, ma60_1h)) / ma60_1h * 100
+  221  
+  222      if current_price > ma60_1h and bull_1h and bull_5m and j_rising and pct_from_ma60 > 0.5:
+  223          return "Strong Bull"
+  224      if current_price < ma60_1h and bear_1h and bear_5m and j_falling and pct_from_ma60 < -0.5:
+  225          return "Strong Bear"
+  226      if current_price > ma60_1h and bull_1h:
+  227          return "Bullish"
+  228      if current_price < ma60_1h and bear_1h:
+  229          return "Bearish"
+  230      # ADX override: 1H MA stack not yet aligned but price + 5m structure
+  231      # + trending market (ADX > 25) confirm direction
+  232      if adx is not None and adx > 25:
+  233          if current_price > ma60_1h and bull_5m:
+  234              return "Bullish"
+  235          if current_price < ma60_1h and bear_5m:
+  236              return "Bearish"
+  237      if abs(pct_from_ma60) < 0.5 and ma_spread < 0.3:
+  238          return "Neutral"
+  239      return "Choppy"
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 2 — HELPER FUNCTIONS USED BY classify_trend()
+────────────────────────────────────────────────────────────────────────────────
+
+--- sma() — Simple Moving Average (lines 116–119) ---
+
+  116  def sma(values, n):
+  117      if len(values) < n:
+  118          return None
+  119      return sum(values[-n:]) / n
+
+  Plain English: Takes the last N closing prices and returns their average.
+  Returns None if there is not enough data.
+
+
+--- ema() — Exponential Moving Average (lines 122–129) ---
+
+  122  def ema(values, n):
+  123      if len(values) < n:
+  124          return None
+  125      k = 2.0 / (n + 1)
+  126      result = sum(values[:n]) / n
+  127      for v in values[n:]:
+  128          result = v * k + result * (1 - k)
+  129      return result
+
+  Plain English: Standard EMA — seed with first N values as a simple average,
+  then apply the 2/(n+1) multiplier for each subsequent candle.
+  Used for EMA20 on 5m and 1h timeframes (score checks), NOT in classify_trend()
+  directly. classify_trend() uses only SMA.
+
+
+--- kdj() — KDJ Momentum Oscillator (lines 132–157) ---
+
+  132  def kdj(candles, n=9, m1=3, m2=3):
+  133      if len(candles) < n:
+  134          return None, None, None
+  135      highs  = [c["high"]  for c in candles]
+  136      lows   = [c["low"]   for c in candles]
+  137      closes = [c["close"] for c in candles]
+  138  
+  139      rsv_list = []
+  140      for i in range(n - 1, len(candles)):
+  141          hh  = max(highs[i - n + 1 : i + 1])
+  142          ll  = min(lows [i - n + 1 : i + 1])
+  143          c   = closes[i]
+  144          rsv = 50.0 if hh == ll else (c - ll) / (hh - ll) * 100
+  145          rsv_list.append(rsv)
+  146  
+  147      k_val = 50.0
+  148      d_val = 50.0
+  149      for rsv in rsv_list:
+  150          k_val = (2/3) * k_val + (1/3) * rsv
+  151          d_val = (2/3) * d_val + (1/3) * k_val
+  152  
+  153      j_val = 3 * k_val - 2 * d_val
+  154      return k_val, d_val, j_val
+
+  Plain English:
+  - RSV (Raw Stochastic Value): where is the current close within the last 9
+    candles' high-low range, expressed as 0–100.
+  - K: smoothed RSV (weight 1/3 new, 2/3 old K).
+  - D: smoothed K (weight 1/3 new K, 2/3 old D).
+  - J: amplified divergence: 3×K − 2×D. Moves faster and farther than K or D.
+  classify_trend() uses only the J line (third return value).
+  It computes J on the full 1H candle set, then J on the set minus the last
+  candle. If J increased → j_rising; if J decreased → j_falling.
+
+
+--- calc_adx() — Wilder ADX on 1H candles (lines 243–290) ---
+
+  243  def calc_adx(candles, period=14):
+  244      """Wilder-smoothed ADX on 1H candles.
+  245      Minimum 2×period (28) candles required."""
+  246      if len(candles) < period * 2:
+  247          return None
+  248      # For each bar: compute True Range, +DM, −DM
+  249      tr_list, plus_dm, minus_dm = [], [], []
+  250      for i in range(1, len(data)):
+  251          high, low, prev_close = data[i]["high"], data[i]["low"], data[i-1]["close"]
+  252          prev_high, prev_low   = data[i-1]["high"], data[i-1]["low"]
+  253          tr   = max(high - low, abs(high - prev_close), abs(low - prev_close))
+  254          up   = high - prev_high
+  255          down = prev_low - low
+  256          plus_dm.append (up   if (up > down   and up   > 0) else 0)
+  257          minus_dm.append(down if (down > up   and down > 0) else 0)
+  258          tr_list.append(tr)
+  259  
+  260      def _wilder(vals, n):          # Wilder smoothing
+  261          s = [sum(vals[:n])]
+  262          for v in vals[n:]:
+  263              s.append(s[-1] - s[-1]/n + v)
+  264          return s
+  265  
+  266      atr_s = _wilder(tr_list, period)
+  267      pdm_s = _wilder(plus_dm,  period)
+  268      mdm_s = _wilder(minus_dm, period)
+  269  
+  270      dx_list = []
+  271      for atr, pdm, mdm in zip(atr_s, pdm_s, mdm_s):
+  272          if atr == 0: continue
+  273          pdi = 100 * pdm / atr
+  274          mdi = 100 * mdm / atr
+  275          tot = pdi + mdi
+  276          dx_list.append(100 * abs(pdi - mdi) / tot if tot > 0 else 0)
+  277  
+  278      adx = sum(dx_list[:period]) / period
+  279      for dx in dx_list[period:]:
+  280          adx = (adx * (period - 1) + dx) / period
+  281      return round(adx, 2)
+
+  Plain English: Standard Wilder ADX.
+  - True Range = largest of: (high−low), |high−prev_close|, |low−prev_close|.
+  - +DM: upward bar movement if it exceeds downward movement and is positive.
+  - −DM: downward bar movement if it exceeds upward movement and is positive.
+  - ATR, +DM, −DM are all Wilder-smoothed over 14 periods.
+  - +DI and −DI are the directional indicators (percentage of ATR).
+  - DX = 100 × |+DI − −DI| / (+DI + −DI)  — measures trend strength.
+  - ADX = Wilder-smoothed average of DX. Higher = stronger trend.
+  - Requires minimum 28 candles (2 × period 14). Uses ALL available candles
+    (up to 100 fetched) so smoothing fully converges.
+  - Result is on a 0–100 scale. Above 25 = trending. Above 35 = strong trend.
+
+
+--- calc_indicators() — packs MAs into a dict (lines 160–174) ---
+
+  160  def calc_indicators(candles):
+  161      closes  = [c["close"] for c in candles]
+  162      vols    = [c["vol"]   for c in candles]
+  163      return {
+  164          "ma5":      sma(closes,  5),
+  165          "ma10":     sma(closes, 10),
+  166          "ma30":     sma(closes, 30),
+  167          "ma60":     sma(closes, 60),
+  168          "ema20":    ema(closes, 20),
+  169          "vol_ma5":  sma(vols,   5),
+  170          "vol_ma10": sma(vols,  10),
+  171          "kdj":      kdj(candles),
+  172          "closes":   closes,
+  173          "candles":  candles,
+  174      }
+
+  Note: classify_trend() does NOT use the calc_indicators() dict.
+  It calls sma() and kdj() directly, computing its own MA values from the raw
+  candle lists. calc_indicators() is used by score_long() and score_short().
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 3 — PLAIN ENGLISH EXPLANATION OF EACH CLASSIFICATION
+────────────────────────────────────────────────────────────────────────────────
+
+The function checks six conditions in strict priority order (first match wins):
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ EARLY EXIT — returns "Choppy" before any checks if:                        │
+│   • Fewer than 30 five-minute candles available, OR                        │
+│   • Fewer than 60 one-hour candles available, OR                           │
+│   • Any of the six MAs returns None (not enough data)                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. STRONG BULL — checked first                                              │
+│                                                                             │
+│ ALL five conditions must be true:                                           │
+│   a) Current price is ABOVE the 1H MA60                                    │
+│   b) 1H MA stack is bullish:  MA10 > MA30 > MA60                           │
+│   c) 5m MA stack is bullish:  MA5  > MA10 > MA30                           │
+│   d) 1H KDJ J-line is RISING (J now > J one candle ago)                   │
+│   e) Price is MORE THAN +0.5% above MA60                                   │
+│                                                                             │
+│ This means: both timeframes are stacked up, price has real distance above  │
+│ the 60-period base, and momentum (J) is accelerating upward.               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 2. STRONG BEAR — checked second                                             │
+│                                                                             │
+│ ALL five conditions must be true:                                           │
+│   a) Current price is BELOW the 1H MA60                                    │
+│   b) 1H MA stack is bearish:  MA10 < MA30 < MA60                           │
+│   c) 5m MA stack is bearish:  MA5  < MA10 < MA30                           │
+│   d) 1H KDJ J-line is FALLING (J now < J one candle ago)                  │
+│   e) Price is MORE THAN 0.5% below MA60 (pct_from_ma60 < −0.5)            │
+│                                                                             │
+│ Mirror image of Strong Bull. All timeframes aligned down, price extended   │
+│ below the base MA, momentum accelerating downward.                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 3. BULLISH — checked third                                                  │
+│                                                                             │
+│ TWO conditions must be true:                                                │
+│   a) Current price is ABOVE the 1H MA60                                    │
+│   b) 1H MA stack is bullish:  MA10 > MA30 > MA60                           │
+│                                                                             │
+│ The 5m stack and KDJ momentum are NOT required. The 1-hour structure is    │
+│ enough — price is above the slow baseline and MAs are ordered correctly.   │
+│ The market is bullish but not in a high-conviction strong-trend state.     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 4. BEARISH — checked fourth                                                 │
+│                                                                             │
+│ TWO conditions must be true:                                                │
+│   a) Current price is BELOW the 1H MA60                                    │
+│   b) 1H MA stack is bearish:  MA10 < MA30 < MA60                           │
+│                                                                             │
+│ Mirror of Bullish. 1H structure is down but without requiring the 5m or    │
+│ momentum confirmation needed for Strong Bear.                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 5. ADX OVERRIDE — upgrades Choppy/Neutral to Bullish or Bearish            │
+│    (only reached if Bullish and Bearish checks above both failed)           │
+│                                                                             │
+│ This block fires when the 1H MA stack is NOT cleanly ordered (e.g.         │
+│ transitioning, crossing) but the market is still clearly trending.         │
+│                                                                             │
+│ Condition: ADX > 25 (trending market confirmed)                            │
+│   Then:                                                                     │
+│   • If price > MA60 AND 5m MAs bullish (MA5>MA10>MA30) → "Bullish"        │
+│   • If price < MA60 AND 5m MAs bearish (MA5<MA10<MA30) → "Bearish"        │
+│                                                                             │
+│ Plain English: The 1-hour MAs haven't lined up yet, but price is on the   │
+│ right side of the slow MA AND the short-term 5m trend agrees AND ADX       │
+│ confirms the market is actually moving (not ranging). Scanner calls this   │
+│ Bullish/Bearish rather than penalising it as Choppy.                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 6. NEUTRAL — checked before final Choppy fallback                           │
+│                                                                             │
+│ BOTH conditions must be true:                                               │
+│   a) Price is within ±0.5% of the 1H MA60                                  │
+│      (abs(pct_from_ma60) < 0.5)                                            │
+│   b) The 1H MA spread is less than 0.3% of MA60                            │
+│      ( (max(MA10,MA30,MA60) − min(MA10,MA30,MA60)) / MA60 × 100 < 0.3 )  │
+│                                                                             │
+│ Plain English: Price is hugging the 60-period MA and the three MAs are    │
+│ tightly bunched together (spread < 0.3%). The market has no direction —    │
+│ it's compressing, not trending in any meaningful way.                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 7. CHOPPY — default fallback (everything else)                              │
+│                                                                             │
+│ None of the above conditions were satisfied. MAs are mixed or disordered,  │
+│ price is near or crossing the MA60, direction is unclear. This is also     │
+│ returned immediately if there is insufficient candle data.                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 4 — ALL THRESHOLD VALUES
+────────────────────────────────────────────────────────────────────────────────
+
+MA PERIODS:
+  1-hour timeframe:
+    MA10  = SMA of last 10  × 1H closes
+    MA30  = SMA of last 30  × 1H closes
+    MA60  = SMA of last 60  × 1H closes  ← anchor/baseline MA
+    EMA20 = EMA of last 20  × 1H closes  (used in score functions, not classify_trend)
+
+  5-minute timeframe:
+    MA5   = SMA of last  5  × 5m closes
+    MA10  = SMA of last 10  × 5m closes
+    MA30  = SMA of last 30  × 5m closes
+    EMA20 = EMA of last 20  × 5m closes  (used in score functions, not classify_trend)
+
+CANDLE FETCH SIZE:
+  5m candles: 100 fetched  (minimum 30 required by classify_trend)
+  1H candles: 100 fetched  (minimum 60 required by classify_trend)
+  15m candles: 50 fetched  (used for J15 momentum check in score functions)
+
+PERCENTAGE THRESHOLDS (classify_trend):
+  pct_from_ma60 > +0.5%   required for Strong Bull
+  pct_from_ma60 < −0.5%   required for Strong Bear
+  abs(pct_from_ma60) < 0.5%  required for Neutral
+  ma_spread < 0.3%           required for Neutral (MAs must be tightly bunched)
+
+ADX THRESHOLDS:
+  ADX period   = 14  (Wilder smoothing)
+  Min candles  = 28  (2 × period; returns None below this)
+  ADX > 25     = trending market — triggers ADX override in classify_trend()
+                 also used in score_long/score_short for +1 bonus point
+  ADX >= 35    = strong trend — displayed in amber/green on dashboard
+  ADX > 25     = hard gate for Trend Continuation (TC) trades (see Section 5)
+
+KDJ PARAMETERS (kdj() function):
+  n  = 9   (lookback period for RSV calculation)
+  m1 = 3   (K smoothing weight denominator = 1/m1)
+  m2 = 3   (D smoothing weight denominator = 1/m2)
+  Starting K and D values = 50.0
+
+TREND CONTINUATION SCORE — HARD GATES (score_trend_continuation_long/short):
+  Long TC:   trend must == "Strong Bull"  AND  adx_1h >= 25
+  Short TC:  trend must == "Strong Bear"  AND  adx_1h >= 25
+  (returns score=0 immediately if either gate fails — no partial scoring)
+
+WALL DETECTION THRESHOLD (in scan_symbol):
+  A bid or ask level is flagged as a "wall" if it is >= 3× the average
+  level size in the top-20 depth book.
+
+DEPTH PROXIMITY:
+  Cumulative depth within 0.5% of price (bid_vol_05p / ask_vol_05p)
+  Cumulative depth within 1.0% of price (bid_vol_1p  / ask_vol_1p)
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 5 — SESSION LOGIC AND ADX OVERRIDE EFFECTS ON TREND CLASSIFICATION
+────────────────────────────────────────────────────────────────────────────────
+
+SESSION BONUS (scanner_server.py, lines 111–120):
+  classify_trend() itself does NOT change based on session.
+  However, the session bonus affects the SCORE THRESHOLD used to decide
+  whether a qualifying trend triggers an alert:
+
+  Session             Hours (EST)     Bonus
+  ─────────────────── ─────────────   ──────
+  EU/US Overlap       08:00–11:59     +1.0 added to effective score
+  US Session          12:00–16:59     +0.5
+  EU Session          03:00–07:59     +0.5
+  Asia / Off-hours    17:00–02:59     +0.0  (no bonus)
+
+  Effect: During EU/US overlap, a lower raw score can still fire an alert
+  because +1.0 is added to the score before comparing against the threshold.
+  Trend classification (the label itself) is unaffected by session.
+
+SESSION GATE (is_active_session, scanner_server.py line 132–135):
+  Active = 03:00–16:59 EST (EU + US hours).
+  Some alert paths check is_active_session() as an additional condition
+  before firing, but this does not change the trend label returned by
+  classify_trend().
+
+CHOPPY + ADX > 25 OVERRIDE IN ALERT SCORING (scanner_server.py lines ~1696, ~1913):
+  When trend_str == "Choppy" AND adx_1h > 25, the score threshold for
+  counter-trend (CTR) alerts is relaxed to the standard threshold rather
+  than the higher counter-trend threshold:
+
+      effective_threshold = (
+          _score_thr            # standard threshold
+          if trend_str == "Choppy" and adx_1h is not None and adx_1h > 25
+          else COUNTER_TREND_MIN_SCORE   # higher CTR threshold
+      )
+
+  Plain English: A "Choppy" trend normally requires a higher score to fire
+  a counter-trend alert. But if ADX > 25 while the label is Choppy, the
+  market is actually moving (the MA stack just hasn't caught up yet), so
+  the scanner relaxes the threshold back to normal.
+
+ADX OVERRIDE INSIDE classify_trend() (lines 232–236):
+  If the function reaches this block (i.e. the 1H MA stack is NOT cleanly
+  ordered), ADX > 25 alone can still produce "Bullish" or "Bearish":
+    • Price above MA60 + bull_5m + ADX > 25  →  "Bullish"
+    • Price below MA60 + bear_5m + ADX > 25  →  "Bearish"
+  This prevents the function from defaulting to Neutral/Choppy during
+  early-stage trends where the slower 1H MAs haven't crossed yet but
+  momentum is clearly directional.
+
+TREND CONTINUATION HARD GATES (scanner.py lines 319, 389):
+  score_trend_continuation_long():   requires trend == "Strong Bull" AND adx >= 25
+  score_trend_continuation_short():  requires trend == "Strong Bear"  AND adx >= 25
+  If either condition fails, the function returns score 0 immediately.
+  These are the only two places where the trend label directly gates a
+  separate scoring path (not just influencing the alert threshold).
+
+
+────────────────────────────────────────────────────────────────────────────────
+SECTION 6 — CALL CHAIN SUMMARY
+────────────────────────────────────────────────────────────────────────────────
+
+scan_symbol(symbol)                          scanner.py line 932
+  │
+  ├─ fetch_klines(symbol, "Min5",  100)      → candles5m  (5m OHLCV)
+  ├─ fetch_klines(symbol, "Min60", 100)      → candles1h  (1H OHLCV)
+  ├─ fetch_klines(symbol, "Min15",  50)      → candles15m (15m, for J15 only)
+  │
+  ├─ calc_adx(candles1h)                     → adx_1h     (14-period Wilder ADX)
+  │
+  ├─ classify_trend(candles5m, candles1h,    → trend label (one of 6 strings)
+  │      current_price, adx=adx_1h)
+  │    │
+  │    ├─ sma(closes_1h, 10/30/60)           1H MA10, MA30, MA60
+  │    ├─ sma(closes_5m,  5/10/30)           5m MA5,  MA10, MA30
+  │    └─ kdj(klines_1h)  ×2                 J-line (current and prev candle)
+  │
+  ├─ score_trend_continuation_long(...)      TC long score (0 unless Strong Bull + ADX≥25)
+  └─ score_trend_continuation_short(...)     TC short score (0 unless Strong Bear + ADX≥25)
+
+The trend label is passed back to run_scanner() in scanner_server.py
+(line 1615) and stored in _state["symbols"][symbol]["trend"] for display
+on the dashboard and for all alert gate logic.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
