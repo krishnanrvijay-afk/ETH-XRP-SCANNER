@@ -707,7 +707,7 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:25, notional:625000, contractSize:0.001,
     tick:0.1,
     makerFee:0.00015, takerFee:0.00045,
-    tpPct:0.0039, softStopPct:0.0039, hardSlPct:0.0078,
+    dollarStop:500, trailPct:0.25, useZoneWidthTP:true,
     bestHoursEDT:[0,1,2,3,4,5,6,7],
     windowDesc:'EDT 00:00–08:00',
     hlCoin:'ETH', isHL:true,
@@ -728,7 +728,7 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:20, notional:500000, contractSize:1,
     tick:0.0001,
     makerFee:0.00015, takerFee:0.00045,
-    tpPct:0.0039, softStopPct:0.0039, hardSlPct:0.0078,
+    tpPct:0.0039, dollarStop:500, trailPct:0.25,
     bestHoursEDT:[22,23,0,6,7,8],
     windowDesc:'EDT 22–01 · 06–09',
     hlCoin:'XRP', isHL:true,
@@ -838,6 +838,7 @@ function makeState(sym) {
     inDrift:false, shadowBuffer:[], shadowCount:0,
     shadowPrice1:null, shadowPrice2:null, tpCounter:0,
     trades:[], depth:null,
+    consecutiveStops:0, shortMode:false, trailHwm:null,
   };
 }
 const state = {};
@@ -1002,11 +1003,19 @@ function openLong(sym, candle) {
   const cfg = TOKEN_CONFIG[sym];
   let target, sl, softStop;
   if (cfg.isHL) {
-    const e  = st.oscLower;
-    const dp2 = cfg.tick < 0.001 ? 4 : 2;
-    target   = +( e * (1 + cfg.tpPct)       ).toFixed(dp2);
-    softStop = +( e * (1 - cfg.softStopPct)  ).toFixed(dp2);
-    sl       = +( e * (1 - cfg.hardSlPct)    ).toFixed(dp2);
+    const e    = st.oscLower;
+    const dp2  = cfg.tick < 0.001 ? 4 : 2;
+    // Dollar stop: $500 / notional × entry = price distance
+    const stopDist = (cfg.dollarStop / cfg.notional) * e;
+    softStop = +( e - stopDist       ).toFixed(dp2);
+    sl       = +( e - 2 * stopDist   ).toFixed(dp2);
+    // TP: zone-width × 2 for ETH; % of entry for XRP
+    if (cfg.useZoneWidthTP) {
+      const zoneWidth = st.oscUpper - st.oscLower;
+      target = +( e + 2 * zoneWidth ).toFixed(dp2);
+    } else {
+      target = +( e * (1 + cfg.tpPct) ).toFixed(dp2);
+    }
   } else {
     target   = st.oscUpper;
     softStop = +(st.oscLower - st.tick).toFixed(7);
@@ -1027,11 +1036,19 @@ function openShort(sym, candle) {
   const cfg = TOKEN_CONFIG[sym];
   let target, sl, softStop;
   if (cfg.isHL) {
-    const e  = st.oscUpper;
-    const dp2 = cfg.tick < 0.001 ? 4 : 2;
-    target   = +( e * (1 - cfg.tpPct)       ).toFixed(dp2);
-    softStop = +( e * (1 + cfg.softStopPct)  ).toFixed(dp2);
-    sl       = +( e * (1 + cfg.hardSlPct)    ).toFixed(dp2);
+    const e    = st.oscUpper;
+    const dp2  = cfg.tick < 0.001 ? 4 : 2;
+    // Dollar stop: $500 / notional × entry = price distance
+    const stopDist = (cfg.dollarStop / cfg.notional) * e;
+    softStop = +( e + stopDist       ).toFixed(dp2);
+    sl       = +( e + 2 * stopDist   ).toFixed(dp2);
+    // TP: zone-width × 2 for ETH; % of entry for XRP
+    if (cfg.useZoneWidthTP) {
+      const zoneWidth = st.oscUpper - st.oscLower;
+      target = +( e - 2 * zoneWidth ).toFixed(dp2);
+    } else {
+      target = +( e * (1 - cfg.tpPct) ).toFixed(dp2);
+    }
   } else {
     target   = st.oscLower;
     softStop = +(st.oscUpper + st.tick).toFixed(7);
@@ -1058,7 +1075,7 @@ function closeTrade(sym, trade, exitPrice, reason) {
   trade.gross   = pnl.gross;
   trade.fees    = pnl.fees;
   trade.net     = pnl.net;
-  trade.outcome = reason === 'TP' ? 'WIN' : reason === 'SOFT_STOP' ? 'SOFT_STOP' : reason === 'HARD_SL' ? 'LOSS' : reason === 'BREAKEVEN' ? 'BREAKEVEN' : 'LOSS';
+  trade.outcome = reason === 'TP' ? 'WIN' : reason === 'SOFT_STOP' ? 'SOFT_STOP' : reason === 'TRAIL_STOP' ? 'TRAIL_STOP' : reason === 'HARD_SL' ? 'LOSS' : reason === 'BREAKEVEN' ? 'BREAKEVEN' : 'LOSS';
   st.trades.push(trade);
   allTrades.push(trade);
   dp(sym, pollCount+'.CLOSE', 'TRADE CLOSED',
@@ -1069,6 +1086,9 @@ function closeTrade(sym, trade, exitPrice, reason) {
 // ── RESET BAND ─────────────────────────────────────────────────────────────────
 function resetBand(sym, reason) {
   const st = state[sym];
+  // Preserve cascade state across resets — incremented before resetBand is called
+  const prevConsecStops = st.consecutiveStops;
+  const prevShortMode   = st.shortMode;
   st.inOsc = false; st.openLong = null; st.openShort = null;
   st.oscLower = 0; st.oscUpper = 0;
   st.zwAnchorLow = null; st.zwAnchorHigh = null;
@@ -1077,8 +1097,10 @@ function resetBand(sym, reason) {
   st.activeDir = 'LONG'; st.action = 'WAIT';
   st.inDrift = false; st.shadowBuffer = []; st.shadowCount = 0;
   st.shadowPrice1 = null; st.shadowPrice2 = null;
-  st.tpCounter = 0; st.unrPnl = 0;
-  dp(sym, pollCount+'.RESET', 'BAND RESET', reason, 'bad');
+  st.tpCounter = 0; st.unrPnl = 0; st.trailHwm = null;
+  st.consecutiveStops = prevConsecStops;
+  st.shortMode = prevShortMode;
+  dp(sym, pollCount+'.RESET', 'BAND RESET', reason+(prevConsecStops>0?' [CASCADE:'+prevConsecStops+']':''), 'bad');
 }
 
 // ── ZONE-WINDOW DETECTION ──────────────────────────────────────────────────────
@@ -1201,9 +1223,16 @@ async function processSym(sym) {
         return;
       }
       if (!inBlackout(sym)) {
-        dp(sym, p+'.9', 'BAND ARMING', 'window opened → arm LONG', 'ok');
         st.zwHeldTs = null; st.inOsc = true;
-        openLong(sym, last); return;
+        if (cfg.isHL && st.consecutiveStops >= 2) {
+          st.activeDir = 'SHORT'; st.action = 'SHORT_ARMED'; st.shortMode = true;
+          dp(sym, p+'.9', 'CASCADE GUARD', 'window opened → '+st.consecutiveStops+' consec stops → arm SHORT', 'warn');
+          openShort(sym, last);
+        } else {
+          dp(sym, p+'.9', 'BAND ARMING', 'window opened → arm LONG', 'ok');
+          openLong(sym, last);
+        }
+        return;
       }
       dp(sym, p+'.9', 'BAND HELD', 'confirmed · blackout · held '+heldHrs.toFixed(1)+'h', 'warn');
       st.action = 'WAIT'; return;
@@ -1220,10 +1249,17 @@ async function processSym(sym) {
 
     if (result && result.confirmed) {
       st.oscLower = result.lower; st.oscUpper = result.upper; st.bandConfirmCount++;
-      dp(sym, p+'.10', 'BAND CONFIRMED', fmtPrice(st.oscLower,st.tick)+' – '+fmtPrice(st.oscUpper,st.tick), 'ok');
+      dp(sym, p+'.10', 'BAND CONFIRMED', fmtPrice(st.oscLower,st.tick)+' – '+fmtPrice(st.oscUpper,st.tick)+(st.consecutiveStops>0?' [CASCADE:'+st.consecutiveStops+']':''), 'ok');
       if (!inBlackout(sym)) {
-        st.inOsc = true; st.zwHeldTs = null; st.action = 'ARMED';
-        openLong(sym, last);
+        st.inOsc = true; st.zwHeldTs = null;
+        if (cfg.isHL && st.consecutiveStops >= 2) {
+          st.activeDir = 'SHORT'; st.action = 'SHORT_ARMED'; st.shortMode = true;
+          dp(sym, p+'.10b', 'CASCADE GUARD', st.consecutiveStops+' consec stops → arming SHORT on confirmed zone', 'warn');
+          openShort(sym, last);
+        } else {
+          st.action = 'ARMED';
+          openLong(sym, last);
+        }
       } else {
         st.zwHeldTs = Date.now(); st.action = 'WAIT';
         dp(sym, p+'.11', 'BLACKOUT HOLD', 'band confirmed · holding until window opens', 'warn');
@@ -1272,18 +1308,38 @@ async function processSym(sym) {
     dp(sym, p+'.13', 'LONG MONITOR', 'close='+fmtPrice(last.close,st.tick)+' unrPnl='+fmtPnl(st.unrPnl), st.unrPnl>=0?'ok':'warn');
     const isFirst = last.ts === lng.filledAtCandleTs;
 
-    // Soft stop
+    // Trailing stop (HL only — locks 75% of peak gain once price moves in our favour)
+    if (cfg.isHL && cfg.trailPct) {
+      if (st.trailHwm === null || last.close > st.trailHwm) st.trailHwm = last.close;
+      if (st.trailHwm > lng.entry) {
+        const trailStop = roundTick(st.trailHwm - cfg.trailPct * (st.trailHwm - lng.entry), st.tick);
+        lng.trailStop = trailStop;
+        if (!isFirst && trailStop > lng.softStop && last.close < trailStop) {
+          const ex = st.unrPnl; st.unrPnl = 0;
+          dp(sym, p+'.14', 'LONG TRAIL STOP', fmtPrice(last.close,st.tick)+' < trail='+fmtPrice(trailStop,st.tick)+' hwm='+fmtPrice(st.trailHwm,st.tick)+' locked='+fmtPnl(ex), 'warn');
+          st.trailHwm = null;
+          closeTrade(sym, lng, trailStop, 'TRAIL_STOP');
+          resetBand(sym, 'long trail stop — profit locked'); return;
+        }
+      }
+    }
+
+    // Soft stop (dollar stop for HL)
     if (!isFirst && last.close <= lng.softStop) {
       const ex = st.unrPnl; st.unrPnl = 0;
       dp(sym, p+'.14', 'LONG SOFT STOP', fmtPrice(last.close,st.tick)+' ≤ softStop='+fmtPrice(lng.softStop,st.tick)+' unrPnl='+fmtPnl(ex), 'warn');
+      if (cfg.isHL) st.consecutiveStops++;
+      st.trailHwm = null;
       closeTrade(sym, lng, lng.softStop, 'SOFT_STOP');
-      resetBand(sym, 'long soft stop — TP-distance adverse'); return;
+      resetBand(sym, 'long soft stop — $500 adverse'); return;
     }
 
-    // Hard SL
+    // Hard SL (safety net — 2× dollar stop distance for HL)
     if (last.close <= lng.sl) {
       st.unrPnl = 0;
       dp(sym, p+'.14', 'LONG HARD SL', fmtPrice(last.close,st.tick)+' ≤ '+fmtPrice(lng.sl,st.tick), 'bad');
+      if (cfg.isHL) st.consecutiveStops++;
+      st.trailHwm = null;
       closeTrade(sym, lng, lng.sl, 'HARD_SL');
       resetBand(sym, 'long hard SL'); return;
     }
@@ -1296,12 +1352,13 @@ async function processSym(sym) {
       closeTrade(sym, lng, tpExit, 'TP');
       st.cycleTradeCount++;
       st.tpCounter = Math.min((st.tpCounter||0)+1, 3);
-      if (cfg.longOnly) {
-        // XRP: LONG-only — take profit, reset, wait for next confirmed band
-        dp(sym, p+'.15', 'LONG-ONLY', 'TP banked · resetting for next band', 'ok');
-        resetBand(sym, 'long-only: TP banked — waiting for new zone');
+      if (cfg.isHL) {
+        // HL: reset cascade guard after TP, wait for new zone
+        st.consecutiveStops = 0; st.shortMode = false; st.trailHwm = null;
+        dp(sym, p+'.15', 'HL TP RESET', 'TP banked · cascade cleared · waiting for new zone', 'ok');
+        resetBand(sym, 'HL TP banked — cascade cleared');
       } else {
-        // ETH: oscillate to SHORT leg
+        // MEXC: oscillate to SHORT leg
         st.activeDir = 'SHORT'; st.action = 'SHORT_ARMED';
         if (!inBlackout(sym)) openShort(sym, last);
       }
@@ -1356,18 +1413,38 @@ async function processSym(sym) {
     dp(sym, p+'.13', 'SHORT MONITOR', 'close='+fmtPrice(last.close,st.tick)+' unrPnl='+fmtPnl(st.unrPnl), st.unrPnl>=0?'ok':'warn');
     const isFirst = last.ts === sht.filledAtCandleTs;
 
-    // Soft stop
+    // Trailing stop (HL only — locks 75% of peak gain once price moves in our favour)
+    if (cfg.isHL && cfg.trailPct) {
+      if (st.trailHwm === null || last.close < st.trailHwm) st.trailHwm = last.close;
+      if (st.trailHwm < sht.entry) {
+        const trailStop = roundTick(st.trailHwm + cfg.trailPct * (sht.entry - st.trailHwm), st.tick);
+        sht.trailStop = trailStop;
+        if (!isFirst && trailStop < sht.softStop && last.close > trailStop && trailStop > sht.target) {
+          const ex = st.unrPnl; st.unrPnl = 0;
+          dp(sym, p+'.14', 'SHORT TRAIL STOP', fmtPrice(last.close,st.tick)+' > trail='+fmtPrice(trailStop,st.tick)+' lwm='+fmtPrice(st.trailHwm,st.tick)+' locked='+fmtPnl(ex), 'warn');
+          st.trailHwm = null;
+          closeTrade(sym, sht, trailStop, 'TRAIL_STOP');
+          resetBand(sym, 'short trail stop — profit locked'); return;
+        }
+      }
+    }
+
+    // Soft stop (dollar stop for HL)
     if (!isFirst && last.close >= sht.softStop) {
       const ex = st.unrPnl; st.unrPnl = 0;
       dp(sym, p+'.14', 'SHORT SOFT STOP', fmtPrice(last.close,st.tick)+' ≥ softStop='+fmtPrice(sht.softStop,st.tick)+' unrPnl='+fmtPnl(ex), 'warn');
+      if (cfg.isHL) { st.consecutiveStops++; st.shortMode = false; }
+      st.trailHwm = null;
       closeTrade(sym, sht, sht.softStop, 'SOFT_STOP');
-      resetBand(sym, 'short soft stop'); return;
+      resetBand(sym, 'short soft stop — $500 adverse'); return;
     }
 
-    // Hard SL
+    // Hard SL (safety net — 2× dollar stop distance for HL)
     if (last.close >= sht.sl) {
       st.unrPnl = 0;
       dp(sym, p+'.14', 'SHORT HARD SL', fmtPrice(last.close,st.tick)+' ≥ '+fmtPrice(sht.sl,st.tick), 'bad');
+      if (cfg.isHL) { st.consecutiveStops++; st.shortMode = false; }
+      st.trailHwm = null;
       closeTrade(sym, sht, sht.sl, 'HARD_SL');
       resetBand(sym, 'short hard SL'); return;
     }
@@ -1378,9 +1455,18 @@ async function processSym(sym) {
       st.unrPnl = 0;
       dp(sym, p+'.14', 'SHORT TP', fmtPrice(last.close,st.tick)+' ≤ TP='+fmtPrice(sht.target,st.tick), 'ok');
       closeTrade(sym, sht, tpExit, 'TP');
-      st.cycleTradeCount++; st.activeDir = 'LONG'; st.action = 'ARMED';
+      st.cycleTradeCount++;
       st.tpCounter = Math.min((st.tpCounter||0)+1, 3);
-      if (!inBlackout(sym)) openLong(sym, last);
+      if (cfg.isHL) {
+        // HL: reset cascade guard after TP, wait for new zone
+        st.consecutiveStops = 0; st.shortMode = false; st.trailHwm = null;
+        dp(sym, p+'.15', 'HL SHORT TP RESET', 'TP banked · cascade cleared · waiting for new zone', 'ok');
+        resetBand(sym, 'HL short TP banked — cascade cleared');
+      } else {
+        // MEXC: oscillate back to LONG leg
+        st.activeDir = 'LONG'; st.action = 'ARMED';
+        if (!inBlackout(sym)) openLong(sym, last);
+      }
       return;
     }
 
@@ -1658,23 +1744,24 @@ function renderTicker(sym) {
       '<div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px">' +
         '<div><div class="bp-order-label">Entry</div><div class="bp-order-value" style="color:'+color+'">'+fmtPrice(trade.entry,st.tick)+'</div></div>' +
         '<div><div class="bp-order-label">TP</div><div class="bp-order-value green">'+fmtPrice(trade.target,st.tick)+'</div></div>' +
-        '<div><div class="bp-order-label">SoftStop</div><div class="bp-order-value yellow">'+fmtPrice(trade.softStop,st.tick)+'</div></div>' +
+        '<div><div class="bp-order-label">'+(cfg.isHL && trade.trailStop && trade.trailStop > trade.softStop ? 'Trail' : 'DollarStop')+'</div><div class="bp-order-value yellow">'+fmtPrice(cfg.isHL && trade.trailStop && trade.trailStop > trade.softStop ? trade.trailStop : trade.softStop, st.tick)+'</div></div>' +
         '<div><div class="bp-order-label">HardSL</div><div class="bp-order-value red">'+fmtPrice(trade.sl,st.tick)+'</div></div>' +
       '</div></div>';
   }
-  const longOnlyPanel = '<div class="bp-dual-side" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #1a2030;gap:4px">'+
-    '<div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#2a3a4a">SHORT</div>'+
-    '<div style="font-size:8px;font-weight:700;letter-spacing:1px;color:#00e676;padding:2px 8px;border:1px solid #00e67630;border-radius:3px;background:#00e67608">LONG ONLY</div>'+
-    '<div style="font-size:8px;color:#2a3a4a;margin-top:2px">one leg per band</div>'+
+  const cascadePanel = '<div class="bp-dual-side" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid #1a2030;gap:4px">'+
+    '<div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#4a6272">SHORT</div>'+
+    '<div style="font-size:8px;font-weight:700;letter-spacing:1px;color:var(--yellow);padding:2px 8px;border:1px solid #ffd74030;border-radius:3px;background:#ffd74008">CASCADE GUARD</div>'+
+    '<div style="font-size:8px;color:#4a6272;margin-top:2px">arms after 2 stops</div>'+
     '</div>';
+  const showCascadePanel = cfg.isHL && !st.shortMode;
   const dualOrderHtml = st.inOsc
-    ? '<div class="bp-dual">'+orderCell(lng,'LONG')+(cfg.longOnly ? longOnlyPanel : orderCell(sht,'SHORT'))+'</div>'
-    : '<div class="bp-dual">'+orderCell(null,'LONG')+(cfg.longOnly ? longOnlyPanel : orderCell(null,'SHORT'))+'</div>';
+    ? '<div class="bp-dual">'+orderCell(lng,'LONG')+(showCascadePanel && !sht ? cascadePanel : orderCell(sht,'SHORT'))+'</div>'
+    : '<div class="bp-dual">'+orderCell(null,'LONG')+(showCascadePanel ? cascadePanel : orderCell(null,'SHORT'))+'</div>';
 
   // Meta line
-  const slDesc = cfg.longOnly
-    ? (isHL ? '±0.39% TP · LONG ONLY' : '1tk TP · LONG ONLY')
-    : (isHL ? '±0.39% TP · ±0.78% SL' : '1tk TP · 2tk SL');
+  const slDesc = isHL
+    ? (cfg.useZoneWidthTP ? '2×zone TP' : '0.39% TP') + ' · $500 stop · 25% trail' + (st.consecutiveStops > 0 ? ' · CASCADE:'+st.consecutiveStops : '')
+    : '1tk TP · 2tk SL';
   const metaHtml = '<div class="bp-meta"><span>$'+fmtK(cfg.notional).replace('$','')+' · '+cfg.leverage+'× · '+slDesc+'</span>' +
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
 
@@ -1694,8 +1781,9 @@ function renderTicker(sym) {
     ? '<div class="bp-trades">' + recent.map(t => {
         const pCls  = (t.net||0)>=0 ? 'green' : 'red';
         const dirCls = t.direction==='SHORT' ? 'type-short' : 'type-long';
-        const reasonBadge = t.exitReason==='SOFT_STOP' ? '<span style="font-size:8px;color:var(--yellow)">[SS]</span>' :
-                            t.exitReason==='HARD_SL'   ? '<span style="font-size:8px;color:var(--red)">[SL]</span>'   : '';
+        const reasonBadge = t.exitReason==='SOFT_STOP'   ? '<span style="font-size:8px;color:var(--yellow)">[SS]</span>'   :
+                            t.exitReason==='TRAIL_STOP' ? '<span style="font-size:8px;color:var(--yellow)">[TR]</span>'  :
+                            t.exitReason==='HARD_SL'    ? '<span style="font-size:8px;color:var(--red)">[SL]</span>'    : '';
         return '<div class="bp-trade-row">' +
           '<span class="bp-trade-type '+dirCls+'">'+t.direction+'</span>' +
           '<span class="bp-trade-price">'+fmtPrice(t.entry,st.tick)+' → '+fmtPrice(t.exit,st.tick)+' '+reasonBadge+'</span>' +
