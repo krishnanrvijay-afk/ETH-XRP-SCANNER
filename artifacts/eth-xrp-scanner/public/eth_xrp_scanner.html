@@ -743,8 +743,11 @@ const ZONE_TOLERANCE  = 1;
 const ZONE_WINDOW_N   = 4;
 const ZONE_WINDOW_K   = 4;
 const ZONE_MIN_EACH   = 1;
-const BAND_HOLD_HOURS = 4;
-const POLL_DETECT     = 20000;
+const BAND_HOLD_HOURS       = 4;
+const HL_TP_COOLDOWN_MS     = 5 * 60 * 1000;  // min gap between HL TP and next entry
+const HL_MIN_TRAIL_GROSS_MULT = 1.5;           // trail only fires when HWM gross ≥ 1.5× round-trip fee
+const HL_TIME_STOP_MIN      = 30;              // close HL position at market after 30 min negative
+const POLL_DETECT           = 20000;
 const POLL_ARMED      = 5000;
 const POLL_FILLED     = 10000;
 const DEPTH_POLL      = 30000;
@@ -838,6 +841,7 @@ function makeState(sym) {
     shadowPrice1:null, shadowPrice2:null, tpCounter:0,
     trades:[], depth:null,
     consecutiveStops:0, shortMode:false, trailHwm:null,
+    tpCooldownEnd:0,
   };
 }
 const state = {};
@@ -1000,6 +1004,11 @@ function buildTrade(sym, dir, entry, target, sl, softStop, candle) {
 function openLong(sym, candle) {
   const st  = state[sym];
   const cfg = TOKEN_CONFIG[sym];
+  // HL cooldown: block re-entry for 5 min after last TP
+  if (cfg.isHL && st.tpCooldownEnd && Date.now() < st.tpCooldownEnd) {
+    dp(sym, pollCount+'.COOL', 'TP COOLDOWN', Math.ceil((st.tpCooldownEnd - Date.now())/1000)+'s remaining', 'muted');
+    return;
+  }
   let target, sl, softStop;
   if (cfg.isHL) {
     const e    = st.oscLower;
@@ -1008,10 +1017,11 @@ function openLong(sym, candle) {
     const stopDist = (cfg.dollarStop / cfg.notional) * e;
     softStop = +( e - stopDist       ).toFixed(dp2);
     sl       = +( e - 2 * stopDist   ).toFixed(dp2);
-    // TP: zone-width × 2 for ETH; % of entry for XRP
+    // TP: zone-width × 2 for ETH (floored at 1.5× round-trip fee); % of entry for XRP
     if (cfg.useZoneWidthTP) {
       const zoneWidth = st.oscUpper - st.oscLower;
-      target = +( e + 2 * zoneWidth ).toFixed(dp2);
+      const minTpDist = 3 * cfg.makerFee * e; // 1.5× round-trip TP fee in price terms
+      target = +( e + Math.max(2 * zoneWidth, minTpDist) ).toFixed(dp2);
     } else {
       target = +( e * (1 + cfg.tpPct) ).toFixed(dp2);
     }
@@ -1033,6 +1043,11 @@ function openLong(sym, candle) {
 function openShort(sym, candle) {
   const st  = state[sym];
   const cfg = TOKEN_CONFIG[sym];
+  // HL cooldown: block re-entry for 5 min after last TP
+  if (cfg.isHL && st.tpCooldownEnd && Date.now() < st.tpCooldownEnd) {
+    dp(sym, pollCount+'.COOL', 'TP COOLDOWN', Math.ceil((st.tpCooldownEnd - Date.now())/1000)+'s remaining', 'muted');
+    return;
+  }
   let target, sl, softStop;
   if (cfg.isHL) {
     const e    = st.oscUpper;
@@ -1041,10 +1056,11 @@ function openShort(sym, candle) {
     const stopDist = (cfg.dollarStop / cfg.notional) * e;
     softStop = +( e + stopDist       ).toFixed(dp2);
     sl       = +( e + 2 * stopDist   ).toFixed(dp2);
-    // TP: zone-width × 2 for ETH; % of entry for XRP
+    // TP: zone-width × 2 for ETH (floored at 1.5× round-trip fee); % of entry for XRP
     if (cfg.useZoneWidthTP) {
       const zoneWidth = st.oscUpper - st.oscLower;
-      target = +( e - 2 * zoneWidth ).toFixed(dp2);
+      const minTpDist = 3 * cfg.makerFee * e; // 1.5× round-trip TP fee in price terms
+      target = +( e - Math.max(2 * zoneWidth, minTpDist) ).toFixed(dp2);
     } else {
       target = +( e * (1 - cfg.tpPct) ).toFixed(dp2);
     }
@@ -1088,6 +1104,7 @@ function resetBand(sym, reason) {
   // Preserve cascade state across resets — incremented before resetBand is called
   const prevConsecStops = st.consecutiveStops;
   const prevShortMode   = st.shortMode;
+  const prevCooldownEnd = st.tpCooldownEnd;
   st.inOsc = false; st.openLong = null; st.openShort = null;
   st.oscLower = 0; st.oscUpper = 0;
   st.zwAnchorLow = null; st.zwAnchorHigh = null;
@@ -1098,7 +1115,8 @@ function resetBand(sym, reason) {
   st.shadowPrice1 = null; st.shadowPrice2 = null;
   st.tpCounter = 0; st.unrPnl = 0; st.trailHwm = null;
   st.consecutiveStops = prevConsecStops;
-  st.shortMode = prevShortMode;
+  st.shortMode        = prevShortMode;
+  st.tpCooldownEnd    = prevCooldownEnd;
   dp(sym, pollCount+'.RESET', 'BAND RESET', reason+(prevConsecStops>0?' [CASCADE:'+prevConsecStops+']':''), 'bad');
 }
 
@@ -1307,13 +1325,15 @@ async function processSym(sym) {
     dp(sym, p+'.13', 'LONG MONITOR', 'close='+fmtPrice(last.close,st.tick)+' unrPnl='+fmtPnl(st.unrPnl), st.unrPnl>=0?'ok':'warn');
     const isFirst = last.ts === lng.filledAtCandleTs;
 
-    // Trailing stop (HL only — locks 75% of peak gain once price moves in our favour)
+    // Trailing stop (HL only — fires only after HWM gross ≥ 1.5× round-trip fee)
     if (cfg.isHL && cfg.trailPct) {
       if (st.trailHwm === null || last.close > st.trailHwm) st.trailHwm = last.close;
       if (st.trailHwm > lng.entry) {
-        const trailStop = roundTick(st.trailHwm - cfg.trailPct * (st.trailHwm - lng.entry), st.tick);
+        const trailStop  = roundTick(st.trailHwm - cfg.trailPct * (st.trailHwm - lng.entry), st.tick);
         lng.trailStop = trailStop;
-        if (!isFirst && trailStop > lng.softStop && last.close < trailStop) {
+        const maxGross      = cfg.notional * (st.trailHwm - lng.entry) / lng.entry;
+        const minTrailGross = HL_MIN_TRAIL_GROSS_MULT * (cfg.makerFee + cfg.takerFee) * cfg.notional;
+        if (!isFirst && trailStop > lng.softStop && last.close < trailStop && maxGross >= minTrailGross) {
           const ex = st.unrPnl; st.unrPnl = 0;
           dp(sym, p+'.14', 'LONG TRAIL STOP', fmtPrice(last.close,st.tick)+' < trail='+fmtPrice(trailStop,st.tick)+' hwm='+fmtPrice(st.trailHwm,st.tick)+' locked='+fmtPnl(ex), 'warn');
           st.trailHwm = null;
@@ -1321,6 +1341,16 @@ async function processSym(sym) {
           resetBand(sym, 'long trail stop — profit locked'); return;
         }
       }
+    }
+
+    // Time stop (HL only — exit at market after 30 min in a losing position)
+    if (cfg.isHL && !isFirst && st.unrPnl < 0 && (Date.now() - lng.ts) >= HL_TIME_STOP_MIN * 60000) {
+      const ex = st.unrPnl; st.unrPnl = 0;
+      dp(sym, p+'.14', 'LONG TIME STOP', Math.round((Date.now()-lng.ts)/60000)+'min negative unrPnl='+fmtPnl(ex), 'warn');
+      st.consecutiveStops++;
+      st.trailHwm = null;
+      closeTrade(sym, lng, last.close, 'SOFT_STOP');
+      resetBand(sym, 'long time stop — '+HL_TIME_STOP_MIN+'min negative'); return;
     }
 
     // Soft stop (dollar stop for HL)
@@ -1352,9 +1382,10 @@ async function processSym(sym) {
       st.cycleTradeCount++;
       st.tpCounter = Math.min((st.tpCounter||0)+1, 3);
       if (cfg.isHL) {
-        // HL: reset cascade guard after TP, wait for new zone
+        // HL: reset cascade guard after TP, enforce 5 min cooldown before next entry
         st.consecutiveStops = 0; st.shortMode = false; st.trailHwm = null;
-        dp(sym, p+'.15', 'HL TP RESET', 'TP banked · cascade cleared · waiting for new zone', 'ok');
+        st.tpCooldownEnd = Date.now() + HL_TP_COOLDOWN_MS;
+        dp(sym, p+'.15', 'HL TP RESET', 'TP banked · cascade cleared · 5min cooldown', 'ok');
         resetBand(sym, 'HL TP banked — cascade cleared');
       } else {
         // MEXC: oscillate to SHORT leg
@@ -1412,13 +1443,15 @@ async function processSym(sym) {
     dp(sym, p+'.13', 'SHORT MONITOR', 'close='+fmtPrice(last.close,st.tick)+' unrPnl='+fmtPnl(st.unrPnl), st.unrPnl>=0?'ok':'warn');
     const isFirst = last.ts === sht.filledAtCandleTs;
 
-    // Trailing stop (HL only — locks 75% of peak gain once price moves in our favour)
+    // Trailing stop (HL only — fires only after LWM gross ≥ 1.5× round-trip fee)
     if (cfg.isHL && cfg.trailPct) {
       if (st.trailHwm === null || last.close < st.trailHwm) st.trailHwm = last.close;
       if (st.trailHwm < sht.entry) {
-        const trailStop = roundTick(st.trailHwm + cfg.trailPct * (sht.entry - st.trailHwm), st.tick);
+        const trailStop     = roundTick(st.trailHwm + cfg.trailPct * (sht.entry - st.trailHwm), st.tick);
         sht.trailStop = trailStop;
-        if (!isFirst && trailStop < sht.softStop && last.close > trailStop && trailStop > sht.target) {
+        const maxGross      = cfg.notional * (sht.entry - st.trailHwm) / sht.entry;
+        const minTrailGross = HL_MIN_TRAIL_GROSS_MULT * (cfg.makerFee + cfg.takerFee) * cfg.notional;
+        if (!isFirst && trailStop < sht.softStop && last.close > trailStop && trailStop > sht.target && maxGross >= minTrailGross) {
           const ex = st.unrPnl; st.unrPnl = 0;
           dp(sym, p+'.14', 'SHORT TRAIL STOP', fmtPrice(last.close,st.tick)+' > trail='+fmtPrice(trailStop,st.tick)+' lwm='+fmtPrice(st.trailHwm,st.tick)+' locked='+fmtPnl(ex), 'warn');
           st.trailHwm = null;
@@ -1426,6 +1459,16 @@ async function processSym(sym) {
           resetBand(sym, 'short trail stop — profit locked'); return;
         }
       }
+    }
+
+    // Time stop (HL only — exit at market after 30 min in a losing position)
+    if (cfg.isHL && !isFirst && st.unrPnl < 0 && (Date.now() - sht.ts) >= HL_TIME_STOP_MIN * 60000) {
+      const ex = st.unrPnl; st.unrPnl = 0;
+      dp(sym, p+'.14', 'SHORT TIME STOP', Math.round((Date.now()-sht.ts)/60000)+'min negative unrPnl='+fmtPnl(ex), 'warn');
+      if (cfg.isHL) { st.consecutiveStops++; st.shortMode = false; }
+      st.trailHwm = null;
+      closeTrade(sym, sht, last.close, 'SOFT_STOP');
+      resetBand(sym, 'short time stop — '+HL_TIME_STOP_MIN+'min negative'); return;
     }
 
     // Soft stop (dollar stop for HL)
@@ -1457,9 +1500,10 @@ async function processSym(sym) {
       st.cycleTradeCount++;
       st.tpCounter = Math.min((st.tpCounter||0)+1, 3);
       if (cfg.isHL) {
-        // HL: reset cascade guard after TP, wait for new zone
+        // HL: reset cascade guard after TP, enforce 5 min cooldown before next entry
         st.consecutiveStops = 0; st.shortMode = false; st.trailHwm = null;
-        dp(sym, p+'.15', 'HL SHORT TP RESET', 'TP banked · cascade cleared · waiting for new zone', 'ok');
+        st.tpCooldownEnd = Date.now() + HL_TP_COOLDOWN_MS;
+        dp(sym, p+'.15', 'HL SHORT TP RESET', 'TP banked · cascade cleared · 5min cooldown', 'ok');
         resetBand(sym, 'HL short TP banked — cascade cleared');
       } else {
         // MEXC: oscillate back to LONG leg
@@ -1759,7 +1803,7 @@ function renderTicker(sym) {
 
   // Meta line
   const slDesc = isHL
-    ? (cfg.useZoneWidthTP ? '2×zone TP' : '0.39% TP') + ' · $500 stop · 25% trail' + (st.consecutiveStops > 0 ? ' · CASCADE:'+st.consecutiveStops : '')
+    ? (cfg.useZoneWidthTP ? '2×zone TP (fee-floored)' : '0.39% TP') + ' · $500 stop · 25% trail (fee-gated)' + (st.tpCooldownEnd && Date.now() < st.tpCooldownEnd ? ' · COOL:'+Math.ceil((st.tpCooldownEnd-Date.now())/1000)+'s' : '') + (st.consecutiveStops > 0 ? ' · CASCADE:'+st.consecutiveStops : '')
     : '1tk TP · 2tk SL';
   const metaHtml = '<div class="bp-meta"><span>$'+fmtK(cfg.notional).replace('$','')+' · '+cfg.leverage+'× · '+slDesc+'</span>' +
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
