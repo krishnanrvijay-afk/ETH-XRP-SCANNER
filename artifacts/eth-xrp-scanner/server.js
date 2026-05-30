@@ -53,7 +53,7 @@ app.get(['/proxy/hl/candles', BASE + '/proxy/hl/candles'], async (req, res) => {
     const r = await fetch('https://api.hyperliquid.xyz/info', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ type: 'candleSnapshot', req: { coin, interval: '1m', startTime, endTime } }),
+      body:    JSON.stringify({ type: 'candleSnapshot', req: { coin, interval: req.query.interval || '1m', startTime, endTime } }),
       signal:  AbortSignal.timeout(10000),
     });
     const data = await r.json();
