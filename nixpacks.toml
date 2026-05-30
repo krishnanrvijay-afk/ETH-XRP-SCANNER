@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["nodejs_20"]
-
-[phases.install]
-cmds = ["cd artifacts/eth-xrp-scanner && npm install"]
-
-[start]
-cmd = "node artifacts/eth-xrp-scanner/server.js"
