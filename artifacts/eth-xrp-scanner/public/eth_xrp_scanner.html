@@ -697,8 +697,8 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:25, notional:625000, contractSize:0.001,
     tick:0.1,
     makerFee:0, takerFee:0.0002,
-    bestHoursEDT:[0,1,2,3,4,5,6,7],
-    windowDesc:'EDT 00:00–08:00',
+    bestHoursEDT:[8,9,10,11,12,13,14],
+    windowDesc:'EDT 08:00–15:00',
     mexcSym:'ETH_USDT', isHL:false,
   },
   ETH_HL: {
@@ -708,8 +708,8 @@ const TOKEN_CONFIG = {
     tick:0.1,
     makerFee:0.00015, takerFee:0.00045,
     dollarStop:500, trailPct:0.25, useZoneWidthTP:true,
-    bestHoursEDT:[0,1,2,3,4,5,6,7],
-    windowDesc:'EDT 00:00–08:00',
+    bestHoursEDT:[8,9,10,11,12,13,14],
+    windowDesc:'EDT 08:00–15:00',
     hlCoin:'ETH', isHL:true,
   },
   XRP_MEXC: {
@@ -718,9 +718,10 @@ const TOKEN_CONFIG = {
     margin:25000, leverage:20, notional:500000, contractSize:1,
     tick:0.0001,
     makerFee:0, takerFee:0.0002,
-    bestHoursEDT:[22,23,0,6,7,8],
-    windowDesc:'EDT 22–01 · 06–09',
+    bestHoursEDT:[9,10,11,12,13,14,15,16,17,18],
+    windowDesc:'EDT 09:00–19:00',
     mexcSym:'XRP_USDT', isHL:false,
+    longOnly:true,
   },
   XRP_HL: {
     label:'XRP·HL', pairLabel:'XRP', sym:'XRP', venue:'HL',
@@ -729,8 +730,8 @@ const TOKEN_CONFIG = {
     tick:0.0001,
     makerFee:0.00015, takerFee:0.00045,
     tpPct:0.0039, dollarStop:500, trailPct:0.25,
-    bestHoursEDT:[22,23,0,6,7,8],
-    windowDesc:'EDT 22–01 · 06–09',
+    bestHoursEDT:[9,10,11,12,13,14,15,16,17,18,23,0],
+    windowDesc:'EDT 09:00–19:00 · 23:00–01:00',
     hlCoin:'XRP', isHL:true,
   },
 };
@@ -743,7 +744,6 @@ const ZONE_WINDOW_N   = 4;
 const ZONE_WINDOW_K   = 4;
 const ZONE_MIN_EACH   = 1;
 const BAND_HOLD_HOURS = 4;
-const CONFIRM_COUNT   = 3;
 const POLL_DETECT     = 20000;
 const POLL_ARMED      = 5000;
 const POLL_FILLED     = 10000;
@@ -761,7 +761,6 @@ let pollerStopped  = false;
 
 SYMBOLS.forEach(sym => {
   localStorage.removeItem(DIAG_KEY_PREFIX + sym);
-  localStorage.removeItem('exrs_v1_' + sym);
 });
 
 let logFilter = 'all';
@@ -900,7 +899,7 @@ function inBlackout(sym) { return !isOptimalWindow(sym); }
 async function fetchMEXCCandles(sym, limit) {
   const cfg = TOKEN_CONFIG[sym];
   try {
-    const url = '/proxy/mexc/kline?symbol='+cfg.mexcSym+'&interval='+CANDLE_INT+'&limit='+limit;
+    const url = 'proxy/mexc/kline?symbol='+cfg.mexcSym+'&interval='+CANDLE_INT+'&limit='+limit;
     const r   = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const d   = await r.json();
     if (!d || !d.data) return [];
@@ -922,7 +921,7 @@ async function fetchHLCandles(sym, limit) {
   try {
     const endTime   = Date.now();
     const startTime = endTime - (limit + 2) * 60000;
-    const url = '/proxy/hl/candles?coin='+cfg.hlCoin+'&startTime='+startTime+'&endTime='+endTime;
+    const url = 'proxy/hl/candles?coin='+cfg.hlCoin+'&startTime='+startTime+'&endTime='+endTime;
     const r   = await fetch(url, { signal: AbortSignal.timeout(10000) });
     const d   = await r.json();
     if (!Array.isArray(d) || !d.length) return [];
@@ -948,14 +947,14 @@ async function fetchDepth(sym) {
   const cfg = TOKEN_CONFIG[sym];
   try {
     if (cfg.isHL) {
-      const r = await fetch('/proxy/hl/depth?coin='+cfg.hlCoin, { signal: AbortSignal.timeout(10000) });
+      const r = await fetch('proxy/hl/depth?coin='+cfg.hlCoin, { signal: AbortSignal.timeout(10000) });
       const d = await r.json();
       if (!d || !d.levels || !d.levels[0]) return null;
       const asks = d.levels[1] ? d.levels[1].map(l => [l.px, l.sz]) : [];
       const bids = d.levels[0] ? d.levels[0].map(l => [l.px, l.sz]) : [];
       return { asks, bids };
     } else {
-      const r = await fetch('/proxy/mexc/depth?symbol='+cfg.mexcSym+'&limit=10', { signal: AbortSignal.timeout(10000) });
+      const r = await fetch('proxy/mexc/depth?symbol='+cfg.mexcSym+'&limit=10', { signal: AbortSignal.timeout(10000) });
       const d = await r.json();
       if (!d || !d.data) return null;
       return { asks: d.data.asks || [], bids: d.data.bids || [] };
@@ -1765,11 +1764,11 @@ function renderTicker(sym) {
   const metaHtml = '<div class="bp-meta"><span>$'+fmtK(cfg.notional).replace('$','')+' · '+cfg.leverage+'× · '+slDesc+'</span>' +
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
 
-  // Best hours (UTC)
-  const curU = utcHour();
-  const hoursHtml = '<div class="bp-best-hours"><div class="bp-best-hours-label">OPTIMAL HOURS (UTC)</div>' +
+  // Best hours (EDT)
+  const curU = edtHour();
+  const hoursHtml = '<div class="bp-best-hours"><div class="bp-best-hours-label">OPTIMAL HOURS (EDT)</div>' +
     '<div class="bp-best-hours-list">' +
-    cfg.bestHoursUTC.map(h => {
+    cfg.bestHoursEDT.map(h => {
       const isNow = h === curU;
       return '<span class="bp-best-hour-pill'+(isNow?' active':'')+'">'+
         (isNow?'★ ':'')+String(h).padStart(2,'0')+':00</span>';
