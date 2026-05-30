@@ -1,0 +1,1 @@
+- [GitHub master workflow](github-master.md) — always pull from GitHub before coding, push after; Railway deploys from there

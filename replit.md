@@ -1,44 +1,35 @@
-# [Project name]
+# ETH-XRP Scanner
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Paper-trading scanner for ETH and XRP futures on MEXC and Hyperliquid, with zone-detection, dollar stops, trailing profit, and cascade guard.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- ETH-XRP scanner: `pnpm --filter @workspace/eth-xrp-scanner run dev` (port 3000)
+- Railway deployment pulls from `krishnanrvijay-afk/ETH-XRP-SCANNER` on GitHub
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspaces, Node.js 24
+- Scanner: vanilla HTML/JS served by Express
+- Proxies: MEXC Futures API + Hyperliquid API
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
-
-## Architecture decisions
-
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
-
-## Product
-
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `artifacts/eth-xrp-scanner/public/eth_xrp_scanner.html` — main HL+MEXC scanner
+- `artifacts/eth-xrp-scanner/server.js` — Express proxy server
+- `artifacts/krishnan-snx-project/public/multi_pair_scanner.html` — MEXC multi-pair scanner
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- **GitHub is master**: `krishnanrvijay-afk/ETH-XRP-SCANNER` is the source of truth. Before any coding session, pull the latest from GitHub (`git fetch github && git merge github/main`). After changes, always push back to GitHub so Railway picks them up.
+- MEXC scanner changes are deferred and reviewed separately from HL changes.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- GitHub remote is named `github` (not `origin`) — `git push github main`
+- Force push is required when Replit and GitHub histories diverge: `git push github main --force`
+- Replit auto-commits go to internal `gitsafe-backup` only — manually push to `github` remote after every session
+- Proxy URLs must be **relative** (`proxy/...` not `/proxy/...`) for Replit's path-based routing to work
 
 ## Pointers
 
