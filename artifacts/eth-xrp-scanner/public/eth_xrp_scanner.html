@@ -769,6 +769,8 @@ SYMBOLS.forEach(sym => {
 let logFilter = 'all';
 let allTrades = [];
 let pollCount = 0;
+const TRADES_KEY     = 'exrs_trades_v1';
+const OPEN_STATE_KEY = 'exrs_openstate_v1';
 
 // ── DIAG HELPERS ───────────────────────────────────────────────────────────────
 function dp(sym, step, label, val, cls) {
@@ -845,10 +847,72 @@ function makeState(sym) {
     trend:'Choppy', adx1h:null,
     trendCandles5m:[], trendCandles1h:[],
     trendLastFetch5m:0, trendLastFetch1h:0,
+    lastBlackout:false,
   };
 }
 const state = {};
 SYMBOLS.forEach(s => { state[s] = makeState(s); });
+
+// ── STATE PERSISTENCE ──────────────────────────────────────────────────────────
+function saveOpenState() {
+  const snap = {};
+  SYMBOLS.forEach(sym => {
+    const st = state[sym];
+    if (!st.inOsc) return;
+    snap[sym] = {
+      inOsc: st.inOsc, activeDir: st.activeDir,
+      openLong: st.openLong, openShort: st.openShort,
+      oscLower: st.oscLower, oscUpper: st.oscUpper,
+      consecutiveStops: st.consecutiveStops, shortMode: st.shortMode,
+      tpCooldownEnd: st.tpCooldownEnd, trailHwm: st.trailHwm,
+      unrPnl: st.unrPnl, zwHeldTs: st.zwHeldTs,
+    };
+  });
+  try { localStorage.setItem(OPEN_STATE_KEY, JSON.stringify(snap)); } catch(e) {}
+}
+
+function clearOpenState(sym) {
+  try {
+    const snap = JSON.parse(localStorage.getItem(OPEN_STATE_KEY) || '{}');
+    delete snap[sym];
+    localStorage.setItem(OPEN_STATE_KEY, JSON.stringify(snap));
+  } catch(e) {}
+}
+
+function restoreOpenState() {
+  try {
+    const snap = JSON.parse(localStorage.getItem(OPEN_STATE_KEY) || '{}');
+    const today = new Date().toDateString();
+    SYMBOLS.forEach(sym => {
+      const o = snap[sym];
+      if (!o) return;
+      const tradeTs = (o.openLong || o.openShort || {}).ts || 0;
+      if (tradeTs && new Date(tradeTs).toDateString() !== today) { clearOpenState(sym); return; }
+      Object.assign(state[sym], {
+        inOsc: o.inOsc, activeDir: o.activeDir,
+        openLong: o.openLong, openShort: o.openShort,
+        oscLower: o.oscLower, oscUpper: o.oscUpper,
+        consecutiveStops: o.consecutiveStops, shortMode: o.shortMode,
+        tpCooldownEnd: o.tpCooldownEnd, trailHwm: o.trailHwm,
+        unrPnl: o.unrPnl, zwHeldTs: o.zwHeldTs,
+      });
+      dp(sym, 'INIT', 'RESTORED', (o.openLong ? 'LONG' : o.openShort ? 'SHORT' : 'BAND') + ' state from localStorage', 'warn');
+    });
+  } catch(e) {}
+}
+
+function restoreTradeHistory() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRADES_KEY) || '[]');
+    const today = new Date().toDateString();
+    const todayTrades = saved.filter(t => t.ts && new Date(t.ts).toDateString() === today);
+    allTrades = todayTrades;
+    todayTrades.forEach(t => { if (state[t.sym]) state[t.sym].trades.push(t); });
+  } catch(e) {}
+}
+
+restoreTradeHistory();
+restoreOpenState();
 
 // ── TIME / SESSION ─────────────────────────────────────────────────────────────
 function edtHour() {
@@ -1111,9 +1175,10 @@ function closeTrade(sym, trade, exitPrice, reason) {
   trade.gross   = pnl.gross;
   trade.fees    = pnl.fees;
   trade.net     = pnl.net;
-  trade.outcome = reason === 'TP' ? 'WIN' : reason === 'SOFT_STOP' ? 'SOFT_STOP' : reason === 'TRAIL_STOP' ? 'TRAIL_STOP' : reason === 'HARD_SL' ? 'LOSS' : reason === 'BREAKEVEN' ? 'BREAKEVEN' : 'LOSS';
+  trade.outcome = reason === 'TP' ? 'WIN' : reason === 'SOFT_STOP' ? 'SOFT_STOP' : reason === 'TRAIL_STOP' ? 'TRAIL_STOP' : reason === 'HARD_SL' ? 'LOSS' : reason === 'BREAKEVEN' ? 'BREAKEVEN' : reason === 'SESSION_CLOSE' ? 'SESSION_CLOSE' : 'LOSS';
   st.trades.push(trade);
   allTrades.push(trade);
+  try { localStorage.setItem(TRADES_KEY, JSON.stringify(allTrades.slice(-300))); } catch(e) {}
   dp(sym, pollCount+'.CLOSE', 'TRADE CLOSED',
     reason+' · '+fmtPrice(trade.entry,st.tick)+' → '+fmtPrice(exitPrice,st.tick)+
     ' net='+fmtPnl(pnl.net), reason==='TP'?'ok':reason==='SOFT_STOP'?'warn':'bad');
@@ -1139,6 +1204,7 @@ function resetBand(sym, reason) {
   st.shortMode        = prevShortMode;
   st.tpCooldownEnd    = prevCooldownEnd;
   dp(sym, pollCount+'.RESET', 'BAND RESET', reason+(prevConsecStops>0?' [CASCADE:'+prevConsecStops+']':''), 'bad');
+  clearOpenState(sym);
 }
 
 // ── TREND CLASSIFICATION (ported from MEXC scanner classify_trend logic) ───────
@@ -1412,8 +1478,24 @@ async function processSym(sym) {
   const dayLow  = Math.min(...raw.map(c => c.low));
   st.dayRange   = (dayHigh - dayLow) / dayLow * 100;
 
+  // Rec 4 — session-close: record SESSION_CLOSE when window shuts with a filled trade
+  const nowBlackout = inBlackout(sym);
+  if (nowBlackout && !st.lastBlackout && st.inOsc) {
+    const activeTrade = st.openLong || st.openShort;
+    if (activeTrade && activeTrade.fillConfirmed) {
+      const ex = st.unrPnl; st.unrPnl = 0;
+      dp(sym, p+'.SC', 'SESSION CLOSE', 'window closed · open '+st.activeDir+' · unrPnl='+fmtPnl(ex)+' @'+fmtPrice(last.close,st.tick), 'warn');
+      closeTrade(sym, activeTrade, last.close, 'SESSION_CLOSE');
+      resetBand(sym, 'session window closed');
+      st.lastBlackout = true;
+      renderTicker(sym);
+      return;
+    }
+  }
+  st.lastBlackout = nowBlackout;
+
   // Off-hours: update display with live price but skip detection and trade execution
-  if (inBlackout(sym) && !st.zwHeldTs && !st.inOsc) {
+  if (nowBlackout && !st.zwHeldTs && !st.inOsc) {
     dp(sym, p+'.1', 'BLACKOUT SKIP', 'no detection — outside session window ['+cfg.windowDesc+']', 'muted');
     renderTicker(sym);
     return;
@@ -1768,9 +1850,15 @@ function renderClock() {
   SYMBOLS.forEach(sym => {
     const overlay = document.getElementById('blackout_'+sym);
     if (!overlay) return;
+    const stSym = state[sym];
     const bo = inBlackout(sym);
-    overlay.classList.toggle('hidden', !bo);
-    if (bo) {
+    const hasFilledTrade = stSym && stSym.inOsc && (
+      (stSym.openLong  && stSym.openLong.fillConfirmed) ||
+      (stSym.openShort && stSym.openShort.fillConfirmed)
+    );
+    // Rec 1: suppress blackout overlay while actively monitoring a filled trade
+    overlay.classList.toggle('hidden', !bo || hasFilledTrade);
+    if (bo && !hasFilledTrade) {
       const cdEl = document.getElementById('bo_cd_'+sym);
       if (cdEl) cdEl.textContent = nextWindowText(sym);
     }
@@ -2004,6 +2092,17 @@ function renderTicker(sym) {
   const metaHtml = '<div class="bp-meta"><span>$'+fmtK(cfg.notional).replace('$','')+' · '+cfg.leverage+'× · '+slDesc+'</span>' +
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
 
+  // Rec 1: amber banner shown when window is closed but a filled trade is still being monitored
+  const activeTrade = st.openLong || st.openShort;
+  const boMonitorHtml = (inBlackout(sym) && activeTrade && activeTrade.fillConfirmed)
+    ? '<div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.3);border-radius:4px;' +
+        'padding:4px 8px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">' +
+        '<span style="font-size:9px;font-weight:700;letter-spacing:1px;color:#ff9800">' +
+          '⚠ WINDOW CLOSED · MONITORING OPEN '+st.activeDir+'</span>' +
+        '<span style="font-size:10px;font-weight:700;color:'+(st.unrPnl>=0?'var(--green)':'var(--red)')+'">'+fmtPnl(st.unrPnl)+'</span>' +
+      '</div>'
+    : '';
+
   // Trend badge
   const trendLabel = st.trend || 'Choppy';
   const adxStr = st.adx1h !== null ? ' · ADX ' + st.adx1h : '';
@@ -2040,9 +2139,10 @@ function renderTicker(sym) {
     ? '<div class="bp-trades">' + recent.map(t => {
         const pCls  = (t.net||0)>=0 ? 'green' : 'red';
         const dirCls = t.direction==='SHORT' ? 'type-short' : 'type-long';
-        const reasonBadge = t.exitReason==='SOFT_STOP'   ? '<span style="font-size:8px;color:var(--yellow)">[SS]</span>'   :
-                            t.exitReason==='TRAIL_STOP' ? '<span style="font-size:8px;color:var(--yellow)">[TR]</span>'  :
-                            t.exitReason==='HARD_SL'    ? '<span style="font-size:8px;color:var(--red)">[SL]</span>'    : '';
+        const reasonBadge = t.exitReason==='SOFT_STOP'      ? '<span style="font-size:8px;color:var(--yellow)">[SS]</span>'     :
+                            t.exitReason==='TRAIL_STOP'   ? '<span style="font-size:8px;color:var(--yellow)">[TR]</span>'    :
+                            t.exitReason==='HARD_SL'      ? '<span style="font-size:8px;color:var(--red)">[SL]</span>'       :
+                            t.exitReason==='SESSION_CLOSE'? '<span style="font-size:8px;color:var(--orange)">[SC]</span>'    : '';
         return '<div class="bp-trade-row">' +
           '<span class="bp-trade-type '+dirCls+'">'+t.direction+'</span>' +
           '<span class="bp-trade-price">'+fmtPrice(t.entry,st.tick)+' → '+fmtPrice(t.exit,st.tick)+' '+reasonBadge+'</span>' +
@@ -2062,7 +2162,7 @@ function renderTicker(sym) {
       '<div class="bp-token '+cfg.tokenColor+'">'+cfg.label+'</div>' +
       '<div class="bp-badges">'+badgeHtml+'</div>' +
     '</div>' +
-    tickStripHtml + unrHtml + priceGrid + dualOrderHtml + metaHtml + trendHtml + hoursHtml + tradesHtml + diagPillHtml;
+    tickStripHtml + unrHtml + priceGrid + dualOrderHtml + metaHtml + boMonitorHtml + trendHtml + hoursHtml + tradesHtml + diagPillHtml;
 }
 
 // ── RENDER FULL TRADE LOG ──────────────────────────────────────────────────────
@@ -2093,7 +2193,7 @@ function renderFullLog() {
     const tick = cfg ? cfg.tick : 0.0001;
     const cls  = (t.net||0)>=0?'green':'red';
     const dirCls = t.direction==='SHORT'?'type-short':'type-long';
-    const reasonColor = t.exitReason==='TP'?'green':t.exitReason==='SOFT_STOP'?'yellow':'red';
+    const reasonColor = t.exitReason==='TP'?'green':t.exitReason==='SOFT_STOP'||t.exitReason==='TRAIL_STOP'?'yellow':t.exitReason==='SESSION_CLOSE'?'orange':'red';
     return '<tr onclick="openDetail(\''+t.id+'\')">' +
       '<td><span class="trade-type '+dirCls+'">'+t.direction+'</span></td>' +
       '<td class="cyan">'+cfg.label+'</td>' +
@@ -2121,7 +2221,7 @@ function openDetail(id) {
       '<div class="detail-title">'+cfg.label+' · '+(t.direction||'LONG')+' TRADE</div>' +
       '<div class="detail-grid">' +
         '<div class="detail-item"><div class="detail-lbl">Venue</div><div class="detail-val '+(cfg.isHL?'purple':'cyan')+'">'+cfg.venue+'</div></div>' +
-        '<div class="detail-item"><div class="detail-lbl">Outcome</div><div class="detail-val '+(t.outcome==='WIN'?'green':t.outcome==='SOFT_STOP'?'yellow':'red')+'">'+t.outcome+'</div></div>' +
+        '<div class="detail-item"><div class="detail-lbl">Outcome</div><div class="detail-val '+(t.outcome==='WIN'?'green':t.outcome==='SOFT_STOP'||t.outcome==='TRAIL_STOP'?'yellow':t.outcome==='SESSION_CLOSE'?'orange':'red')+'">'+t.outcome+'</div></div>' +
         '<div class="detail-item"><div class="detail-lbl">Entry</div><div class="detail-val yellow">'+fmtPrice(t.entry,tick)+'</div></div>' +
         '<div class="detail-item"><div class="detail-lbl">Exit</div><div class="detail-val '+cls+'">'+fmtPrice(t.exit,tick)+'</div></div>' +
         '<div class="detail-item"><div class="detail-lbl">TP</div><div class="detail-val green">'+fmtPrice(t.target,tick)+'</div></div>' +
@@ -2264,8 +2364,10 @@ function clearAll() {
     const cfg = TOKEN_CONFIG[sym];
     Object.assign(st, makeState(sym));
     st.sessionStart = Date.now();
+    clearOpenState(sym);
   });
   allTrades = [];
+  try { localStorage.removeItem(TRADES_KEY); } catch(e) {}
   sessionRunning = true; pollerStopped = false; diagEnabled = true;
   document.getElementById('diagStatus').textContent = 'ON';
   clearDiag();
@@ -2308,6 +2410,7 @@ async function poll() {
   renderCombined();
   SYMBOLS.forEach(renderDiag);
   if (document.getElementById('tab-trades').classList.contains('active')) renderFullLog();
+  saveOpenState();
 }
 
 function nextPollMs() {
