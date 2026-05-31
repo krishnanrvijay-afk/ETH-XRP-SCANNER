@@ -251,11 +251,11 @@ body { padding: 0 10px 40px; max-width: 1400px; margin: 0 auto; }
 /* ── PATTERN TRACKER (zone-window detection) ─────────────────────────────── */
 .pattern-track { margin: 6px 0; padding: 6px 8px; background: rgba(0,0,0,0.3); border-radius: 6px; border: 1px solid var(--border); }
 .pt-slots { display: flex; gap: 4px; margin-bottom: 4px; }
-.pt-slot { flex: 1; padding: 4px 2px; border-radius: 4px; text-align: center; border: 1px solid #1a2030; min-width: 0; }
+.pt-slot { flex: 1; padding: 6px 2px; border-radius: 4px; text-align: center; border: 1px solid #1a2030; min-width: 0; }
 .pt-slot.future { border-color: #111; }
 .pt-slot.active { border-color: var(--muted); }
-.pt-label { font-size: 8px; font-weight: 700; }
-.pt-price { font-size: 7px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-label { font-size: 12px; font-weight: 800; letter-spacing: 1px; }
+.pt-price { font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pt-tick  { font-size: 8px; }
 .pt-needs { font-size: 8px; color: var(--muted); margin-top: 2px; }
 .pt-needs-price { color: var(--yellow); font-weight: 700; }
@@ -739,7 +739,7 @@ const SYMBOLS = ['ETH_MEXC','ETH_HL','XRP_MEXC','XRP_HL'];
 const PAIRS   = [['ETH_MEXC','ETH_HL'],['XRP_MEXC','XRP_HL']];
 
 // ── CONSTANTS ──────────────────────────────────────────────────────────────────
-const ZONE_TOLERANCE  = 1;
+const ZONE_TOLERANCE  = 2;
 const ZONE_WINDOW_N   = 4;
 const ZONE_WINDOW_K   = 4;
 const ZONE_MIN_EACH   = 1;
@@ -1391,7 +1391,7 @@ function updateZoneWindow(sym, candle) {
 
   if (st.zwAnchorLow === null) {
     st.zwAnchorLow = price;
-    st.zwBuffer    = ['L'];
+    st.zwBuffer    = [{d:'L', p:price}];
     st.zwLowCount  = 1; st.zwHighCount = 0;
     return null;
   }
@@ -1399,38 +1399,38 @@ function updateZoneWindow(sym, candle) {
   const isLow  = Math.abs(price - st.zwAnchorLow) <= tol;
   const isHigh = st.zwAnchorHigh !== null && Math.abs(price - st.zwAnchorHigh) <= tol;
 
-  if (isLow) {
-    st.zwBuffer.push('L'); st.zwLowCount++;
+  if (isLow && !isHigh) {
+    st.zwBuffer.push({d:'L', p:price}); st.zwLowCount++;
     if (st.zwBuffer.length > ZONE_WINDOW_N) {
       const removed = st.zwBuffer.shift();
-      if (removed === 'L') st.zwLowCount--;
-      else if (removed === 'H') st.zwHighCount--;
+      if (removed?.d === 'L') st.zwLowCount--;
+      else if (removed?.d === 'H') st.zwHighCount--;
     }
   } else if (isHigh) {
-    st.zwBuffer.push('H'); st.zwHighCount++;
+    st.zwBuffer.push({d:'H', p:price}); st.zwHighCount++;
     if (st.zwBuffer.length > ZONE_WINDOW_N) {
       const removed = st.zwBuffer.shift();
-      if (removed === 'L') st.zwLowCount--;
-      else if (removed === 'H') st.zwHighCount--;
+      if (removed?.d === 'L') st.zwLowCount--;
+      else if (removed?.d === 'H') st.zwHighCount--;
     }
   } else if (price > (st.zwAnchorHigh || st.zwAnchorLow) + tol) {
-    // Price broke above — reset anchor
+    // Price broke above — set H anchor on first breach, otherwise full reset
     if (!st.zwAnchorHigh) {
       st.zwAnchorHigh = price;
-      st.zwBuffer.push('H'); st.zwHighCount++;
+      st.zwBuffer.push({d:'H', p:price}); st.zwHighCount++;
       if (st.zwBuffer.length > ZONE_WINDOW_N) {
         const removed = st.zwBuffer.shift();
-        if (removed === 'L') st.zwLowCount--;
-        else if (removed === 'H') st.zwHighCount--;
+        if (removed?.d === 'L') st.zwLowCount--;
+        else if (removed?.d === 'H') st.zwHighCount--;
       }
     } else {
       resetBand(sym, 'price broke above zone — new anchor: '+fmtPrice(price,tick));
-      st.zwAnchorLow = price; st.zwBuffer = ['L']; st.zwLowCount = 1; st.zwHighCount = 0;
+      st.zwAnchorLow = price; st.zwBuffer = [{d:'L', p:price}]; st.zwLowCount = 1; st.zwHighCount = 0;
       return null;
     }
   } else if (price < st.zwAnchorLow - tol) {
     resetBand(sym, 'price broke below zone anchor');
-    st.zwAnchorLow = price; st.zwBuffer = ['L']; st.zwLowCount = 1; st.zwHighCount = 0;
+    st.zwAnchorLow = price; st.zwBuffer = [{d:'L', p:price}]; st.zwLowCount = 1; st.zwHighCount = 0;
     return null;
   }
 
@@ -1540,7 +1540,7 @@ async function processSym(sym) {
     dp(sym, p+'.9', 'ZW PROGRESS',
       (st.zwAnchorLow ? 'L='+fmtPrice(st.zwAnchorLow,st.tick) : 'no anchor')+
       (st.zwAnchorHigh ? ' H='+fmtPrice(st.zwAnchorHigh,st.tick) : '')+
-      ' ['+buf.join('')+'] L='+st.zwLowCount+' H='+st.zwHighCount, buf.length>=ZONE_WINDOW_K?'warn':'muted');
+      ' ['+buf.map(e=>e.d).join('')+'] L='+st.zwLowCount+' H='+st.zwHighCount, buf.length>=ZONE_WINDOW_K?'warn':'muted');
 
     if (result && result.confirmed) {
       st.oscLower = result.lower; st.oscUpper = result.upper; st.bandConfirmCount++;
@@ -2009,18 +2009,17 @@ function renderTicker(sym) {
     const buf = st.zwBuffer || [];
     const slots = Array.from({length:ZONE_WINDOW_N},(_,i) => {
       if (i < buf.length) {
-        const val = buf[i];
-        const col = val==='L' ? '#00e676' : '#ffd740';
+        const entry = buf[i];
+        const isL = entry.d === 'L';
+        const col = isL ? '#00e676' : '#ffd740';
         return '<div class="pt-slot" style="border-color:'+col+';background:'+col+'18">'+
-          '<div class="pt-label" style="color:'+col+'">'+val+'</div>'+
-          '<div class="pt-price">'+(val==='L'
-            ? (st.zwAnchorLow  ? fmtPrice(st.zwAnchorLow, st.tick) : '?')
-            : (st.zwAnchorHigh ? fmtPrice(st.zwAnchorHigh,st.tick) : '?'))+'</div>'+
-          '<div class="pt-tick">✓</div></div>';
+          '<div class="pt-label" style="color:'+col+'">'+(isL?'L':'H')+'</div>'+
+          '<div class="pt-price" style="color:'+col+'">'+fmtPrice(entry.p, st.tick)+'</div>'+
+          '<div class="pt-tick" style="color:'+col+'">✓</div></div>';
       } else if (i===buf.length && st.zwAnchorLow!==null) {
-        return '<div class="pt-slot active"><div class="pt-label">?</div><div class="pt-price">—</div><div class="pt-tick">→</div></div>';
+        return '<div class="pt-slot active"><div class="pt-label" style="color:var(--muted)">?</div><div class="pt-price" style="color:var(--muted)">—</div><div class="pt-tick">→</div></div>';
       }
-      return '<div class="pt-slot future"><div class="pt-label">·</div><div class="pt-price">—</div><div class="pt-tick"> </div></div>';
+      return '<div class="pt-slot future"><div class="pt-label" style="color:#333">·</div><div class="pt-price" style="color:#333">—</div><div class="pt-tick"> </div></div>';
     }).join('');
     const needLine = st.zwAnchorLow===null
       ? '<div class="pt-needs" style="color:#444">Waiting for first close...</div>'
