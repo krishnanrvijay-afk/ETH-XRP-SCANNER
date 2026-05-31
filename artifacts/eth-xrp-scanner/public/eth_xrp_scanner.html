@@ -2093,7 +2093,6 @@ function renderTicker(sym) {
     '<span style="color:'+(cfg.venue==='HL'?'var(--purple)':'var(--cyan)')+'">'+cfg.venue+'</span></div>';
 
   // Rec 1: amber banner shown when window is closed but a filled trade is still being monitored
-  const activeTrade = st.openLong || st.openShort;
   const boMonitorHtml = (inBlackout(sym) && activeTrade && activeTrade.fillConfirmed)
     ? '<div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.3);border-radius:4px;' +
         'padding:4px 8px;margin-top:4px;display:flex;justify-content:space-between;align-items:center">' +
