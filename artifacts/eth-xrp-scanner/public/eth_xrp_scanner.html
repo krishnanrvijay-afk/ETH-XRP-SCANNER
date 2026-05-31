@@ -2046,10 +2046,17 @@ function renderTicker(sym) {
 
   const activeTrade = st.activeDir==='LONG' ? lng : sht;
   const priceCellLabel = !st.inOsc ? 'Live Price' : (activeTrade?.fillConfirmed) ? 'Close vs SL' : 'Last Price';
+  // When a trade is active and filled, use st.lastPrice (updated every poll, same value
+  // the monitoring engine uses for P&L and stop checks). st.displayPrice is only refreshed
+  // on isNewCandle boundaries, so it can be several polls stale — causing a visible split
+  // between the card price and the unrPnl figure.
+  const priceForDisplay = (st.inOsc && activeTrade?.fillConfirmed)
+    ? st.lastPrice
+    : (st.displayPrice || st.lastPrice);
   const priceGrid =
     '<div class="bp-grid">' +
       '<div class="bp-cell"><div class="bp-cell-label">'+priceCellLabel+'</div>' +
-        '<div class="bp-cell-value yellow">'+fmtPrice(st.displayPrice||st.lastPrice,st.tick)+'</div>' +
+        '<div class="bp-cell-value yellow">'+fmtPrice(priceForDisplay,st.tick)+'</div>' +
         '<div id="cdclock_'+sym+'" style="font-size:11px;color:var(--cyan);font-weight:700;margin-top:2px">--s</div></div>' +
       '<div class="bp-cell"><div class="bp-cell-label">Session P&L</div>' +
         '<div class="bp-cell-value '+pnlCls+'">'+fmtPnl(net)+'</div></div>' +
