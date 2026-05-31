@@ -700,6 +700,7 @@ const TOKEN_CONFIG = {
     bestHoursEDT:[8,9,10,11,12,13,14],
     windowDesc:'EDT 08:00–15:00',
     mexcSym:'ETH_USDT', isHL:false,
+    minZoneWidthTicks:5,
   },
   ETH_HL: {
     label:'ETH·HL', pairLabel:'ETH', sym:'ETH', venue:'HL',
@@ -722,6 +723,7 @@ const TOKEN_CONFIG = {
     windowDesc:'EDT 09:00–19:00 · 23:00–01:00',
     mexcSym:'XRP_USDT', isHL:false,
     longOnly:true,
+    minZoneWidthTicks:5,
   },
   XRP_HL: {
     label:'XRP·HL', pairLabel:'XRP', sym:'XRP', venue:'HL',
@@ -1545,6 +1547,18 @@ async function processSym(sym) {
     if (result && result.confirmed) {
       st.oscLower = result.lower; st.oscUpper = result.upper; st.bandConfirmCount++;
       dp(sym, p+'.10', 'BAND CONFIRMED', fmtPrice(st.oscLower,st.tick)+' – '+fmtPrice(st.oscUpper,st.tick)+(st.consecutiveStops>0?' [CASCADE:'+st.consecutiveStops+']':''), 'ok');
+      // Min zone width gate: reject narrow zones before arming (MEXC only)
+      const minWidthTicks = cfg.minZoneWidthTicks || 0;
+      if (minWidthTicks > 0) {
+        const zoneWidthTk = Math.round((st.oscUpper - st.oscLower) / st.tick);
+        if (zoneWidthTk < minWidthTicks) {
+          dp(sym, p+'.10b', 'ZONE TOO NARROW',
+            fmtPrice(st.oscLower,st.tick)+' – '+fmtPrice(st.oscUpper,st.tick)+
+            ' width='+zoneWidthTk+'tk < min '+minWidthTicks+'tk — skipping', 'warn');
+          resetBand(sym, 'zone too narrow ('+zoneWidthTk+'tk < '+minWidthTicks+'tk)');
+          return;
+        }
+      }
       if (!inBlackout(sym)) {
         st.inOsc = true; st.zwHeldTs = null;
         if (cfg.isHL && st.consecutiveStops >= 2) {
@@ -1638,7 +1652,9 @@ async function processSym(sym) {
       if (cfg.isHL) st.consecutiveStops++;
       st.trailHwm = null;
       closeTrade(sym, lng, lng.softStop, 'SOFT_STOP');
-      resetBand(sym, 'long soft stop — $500 adverse'); return;
+      resetBand(sym, cfg.dollarStop
+        ? 'long soft stop — $'+cfg.dollarStop+' adverse'
+        : 'long soft stop — zone break (1tk)'); return;
     }
 
     // Hard SL (safety net — 2× dollar stop distance for HL)
@@ -1756,7 +1772,9 @@ async function processSym(sym) {
       if (cfg.isHL) { st.consecutiveStops++; st.shortMode = false; }
       st.trailHwm = null;
       closeTrade(sym, sht, sht.softStop, 'SOFT_STOP');
-      resetBand(sym, 'short soft stop — $500 adverse'); return;
+      resetBand(sym, cfg.dollarStop
+        ? 'short soft stop — $'+cfg.dollarStop+' adverse'
+        : 'short soft stop — zone break (1tk)'); return;
     }
 
     // Hard SL (safety net — 2× dollar stop distance for HL)
